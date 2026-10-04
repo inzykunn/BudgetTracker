@@ -145,10 +145,40 @@ def update_inventory_item(
         connection.close()
 
 
-def mark_inventory_sold(item_id, sale_price, sold_date):
+def buy_inventory(
+    name,
+    purchase_cost,
+    acquired_date,
+    notes=None
+):
+    return create_inventory_item(
+        name=name,
+        purchase_cost=purchase_cost,
+        acquired_date=acquired_date,
+        status="AVAILABLE",
+        notes=notes
+    )
+
+
+def sell_inventory(item_id, sale_price, sold_date):
     connection = get_connection()
 
     try:
+        item = connection.execute(
+            """
+            SELECT purchase_cost, status
+            FROM inventory_items
+            WHERE id = ?
+            """,
+            (item_id,)
+        ).fetchone()
+
+        if not item:
+            raise ValueError("Inventory item not found")
+
+        if item[1] == "SOLD":
+            raise ValueError("Inventory item is already sold")
+
         connection.execute(
             """
             UPDATE inventory_items
@@ -163,9 +193,36 @@ def mark_inventory_sold(item_id, sale_price, sold_date):
 
         connection.commit()
 
+        return sale_price - item[0]
+
     except Exception:
         connection.rollback()
         raise
+
+    finally:
+        connection.close()
+
+
+def calculate_inventory_profit(item_id):
+    connection = get_connection()
+
+    try:
+        item = connection.execute(
+            """
+            SELECT purchase_cost, sale_price, status
+            FROM inventory_items
+            WHERE id = ?
+            """,
+            (item_id,)
+        ).fetchone()
+
+        if not item:
+            raise ValueError("Inventory item not found")
+
+        if item[1] is None:
+            return 0
+
+        return item[1] - item[0]
 
     finally:
         connection.close()

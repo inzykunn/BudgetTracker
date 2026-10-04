@@ -145,13 +145,52 @@ def update_asset(
         connection.close()
 
 
-def delete_asset(asset_id):
+def update_asset_value(asset_id, current_value):
     connection = get_connection()
 
     try:
         connection.execute(
             """
-            DELETE FROM assets
+            UPDATE assets
+            SET current_value = ?
+            WHERE id = ?
+            """,
+            (current_value, asset_id)
+        )
+
+        connection.commit()
+
+    except Exception:
+        connection.rollback()
+        raise
+
+    finally:
+        connection.close()
+
+
+def dispose_asset(asset_id):
+    connection = get_connection()
+
+    try:
+        asset = connection.execute(
+            """
+            SELECT status
+            FROM assets
+            WHERE id = ?
+            """,
+            (asset_id,)
+        ).fetchone()
+
+        if not asset:
+            raise ValueError("Asset not found")
+
+        if asset[0] == "DISPOSED":
+            raise ValueError("Asset is already disposed")
+
+        connection.execute(
+            """
+            UPDATE assets
+            SET status = 'DISPOSED'
             WHERE id = ?
             """,
             (asset_id,)

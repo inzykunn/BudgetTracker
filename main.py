@@ -6,6 +6,13 @@ from services.people_service import create_person, get_people
 from services.receivable_service import create_receivable, get_receivables
 from services.liability_service import create_liability, get_liabilities
 from services.credit_service import create_credit_account, get_credit_accounts
+from services.asset_service import create_asset, get_assets
+from services.inventory_service import (
+    buy_inventory,
+    get_inventory_items,
+    sell_inventory,
+    calculate_inventory_profit
+)
 
 
 SCHEMA_PATH = "database/schema.sql"
@@ -96,6 +103,41 @@ def main():
     print("Liability:", liability_id)
     print("Credit:", credit_id)
 
+    asset_id = create_asset(
+        "Test PC",
+        "Electronics",
+        800000,
+        800000,
+        "2026-10-04",
+        "ACTIVE",
+        "Test asset"
+    )
+
+    inventory_id = buy_inventory(
+        "Test iPhone",
+        1300000,
+        "2026-10-04",
+        "Test inventory"
+    )
+
+    profit = sell_inventory(
+        inventory_id,
+        1400000,
+        "2026-10-04"
+    )
+
+    print("\n=== ASSETS ===")
+    print(get_assets())
+
+    print("\n=== INVENTORY ===")
+    print(get_inventory_items())
+
+    print("\n=== INVENTORY PROFIT ===")
+    print(profit)
+
+    print("\n=== CREATED IDS ===")
+    print("Asset:", asset_id)
+    print("Inventory:", inventory_id)
 
 if __name__ == "__main__":
     main()
