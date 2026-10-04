@@ -1,12 +1,8 @@
 from database.connection import get_connection
-from services.account_service import (
-    create_account,
-    get_accounts,
-    get_account_by_id,
-    get_account_by_name,
-    update_account,
-    deactivate_account
-)
+from services.account_service import create_account, get_account_by_name
+from services.category_service import create_category
+from services.transaction_service import create_transaction, get_account_balance
+
 
 SCHEMA_PATH = "database/schema.sql"
 
@@ -26,26 +22,20 @@ def main():
     initialize_database()
 
     cash_id = create_account("Cash", "CASH")
-    gcash_id = create_account("GCash", "EWALLET")
+    category_id = create_category("Test Income", "INCOME")
 
-    print("All accounts:")
-    print(get_accounts())
+    transaction_id = create_transaction(
+        "2026-10-04",
+        "Test transaction",
+        "INCOME",
+        category_id,
+        [(cash_id, 100000)]
+    )
 
-    print("\nCash by ID:")
-    print(get_account_by_id(cash_id))
+    balance = get_account_balance(cash_id)
 
-    print("\nGCash by name:")
-    print(get_account_by_name("GCash"))
-
-    update_account(gcash_id, "GCash", "EWALLET")
-
-    print("\nAfter update:")
-    print(get_account_by_id(gcash_id))
-
-    deactivate_account(gcash_id)
-
-    print("\nAfter deactivation:")
-    print(get_account_by_id(gcash_id))
+    print("Transaction ID:", transaction_id)
+    print("Cash balance:", balance)
 
 
 if __name__ == "__main__":
