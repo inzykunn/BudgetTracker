@@ -8,8 +8,6 @@ class BaseDatabaseTest(unittest.TestCase):
 
     def setUp(self):
         self.original_db_path = connection.DATABASE_PATH
-
-        # Use the original application database.
         connection.DATABASE_PATH = self.original_db_path
 
         schema_path = (
@@ -18,21 +16,22 @@ class BaseDatabaseTest(unittest.TestCase):
 
         with sqlite3.connect(self.original_db_path) as db:
             db.execute("PRAGMA foreign_keys = ON")
-
             db.executescript(
                 schema_path.read_text(encoding="utf-8")
             )
 
-            # Clear existing data in dependency order.
             tables = [
                 "liability_payments",
                 "receivable_payments",
+                "liability_balance_history",
+                "receivable_balance_history",
+                "asset_valuations",
+                "transaction_entries",
+                "transactions",
                 "liabilities",
                 "receivables",
                 "inventory_items",
                 "assets",
-                "transaction_entries",
-                "transactions",
                 "credit_accounts",
                 "people",
                 "categories",

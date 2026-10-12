@@ -2,6 +2,35 @@ from database.connection import get_connection
 from services.transaction_service import create_transaction_with_connection
 
 
+def _record_liability_balance(
+    connection,
+    liability_id,
+    effective_date,
+    outstanding_amount,
+    status,
+    notes=None,
+):
+    connection.execute(
+        """
+        INSERT INTO liability_balance_history (
+            liability_id,
+            effective_date,
+            outstanding_amount,
+            status,
+            notes
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            liability_id,
+            effective_date,
+            outstanding_amount,
+            status,
+            notes,
+        ),
+    )
+
+
 def create_liability(
     description,
     original_amount,
@@ -9,11 +38,14 @@ def create_liability(
     person_id=None,
     credit_account_id=None,
     due_date=None,
-    status="OPEN"
+    status="OPEN",
 ):
     connection = get_connection()
 
     try:
+        if original_amount <= 0:
+            raise ValueError("Original amount must be greater than zero")
+
         cursor = connection.execute(
             """
             INSERT INTO liabilities (
@@ -34,13 +66,22 @@ def create_liability(
                 original_amount,
                 date_created,
                 due_date,
-                status
-            )
+                status,
+            ),
+        )
+
+        liability_id = cursor.lastrowid
+
+        _record_liability_balance(
+            connection,
+            liability_id,
+            date_created,
+            original_amount,
+            status,
         )
 
         connection.commit()
-
-        return cursor.lastrowid
+        return liability_id
 
     except Exception:
         connection.rollback()
@@ -68,7 +109,7 @@ def get_liability_by_id(liability_id):
             FROM liabilities
             WHERE id = ?
             """,
-            (liability_id,)
+            (liability_id,),
         ).fetchone()
 
     finally:
@@ -99,6 +140,83 @@ def get_liabilities():
         connection.close()
 
 
+def get_liability_balance_history(liability_id):
+    connection = get_connection()
+
+    try:
+        liability = connection.execute(
+            """
+            SELECT id
+            FROM liabilities
+            WHERE id = ?
+            """,
+            (liability_id,),
+        ).fetchone()
+
+        if not liability:
+            raise ValueError("Liability not found")
+
+        return connection.execute(
+            """
+            SELECT
+                id,
+                liability_id,
+                effective_date,
+                outstanding_amount,
+                status,
+                notes,
+                created_at
+            FROM liability_balance_history
+            WHERE liability_id = ?
+            ORDER BY effective_date DESC, id DESC
+            """,
+            (liability_id,),
+        ).fetchall()
+
+    finally:
+        connection.close()
+
+
+def get_liability_balance_as_of(liability_id, as_of_date):
+    connection = get_connection()
+
+    try:
+        liability = connection.execute(
+            """
+            SELECT date_created
+            FROM liabilities
+            WHERE id = ?
+            """,
+            (liability_id,),
+        ).fetchone()
+
+        if not liability:
+            raise ValueError("Liability not found")
+
+        if as_of_date < liability[0]:
+            return None
+
+        history = connection.execute(
+            """
+            SELECT outstanding_amount
+            FROM liability_balance_history
+            WHERE liability_id = ?
+              AND effective_date <= ?
+            ORDER BY effective_date DESC, id DESC
+            LIMIT 1
+            """,
+            (liability_id, as_of_date),
+        ).fetchone()
+
+        if history:
+            return history[0]
+
+        return None
+
+    finally:
+        connection.close()
+
+
 def update_liability(
     liability_id,
     description,
@@ -107,11 +225,43 @@ def update_liability(
     person_id=None,
     credit_account_id=None,
     due_date=None,
-    status="OPEN"
+    status="OPEN",
 ):
     connection = get_connection()
 
     try:
+        if original_amount <= 0:
+            raise ValueError("Original amount must be greater than zero")
+
+        liability = connection.execute(
+            """
+            SELECT id
+            FROM liabilities
+            WHERE id = ?
+            """,
+            (liability_id,),
+        ).fetchone()
+
+        if not liability:
+            raise ValueError("Liability not found")
+
+        paid = connection.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM liability_payments
+            WHERE liability_id = ?
+            """,
+            (liability_id,),
+        ).fetchone()[0]
+
+        if original_amount < paid:
+            raise ValueError(
+                "Original amount cannot be less than payments already made"
+            )
+
+        remaining = original_amount - paid
+        effective_status = "PAID" if remaining == 0 else status
+
         connection.execute(
             """
             UPDATE liabilities
@@ -132,9 +282,18 @@ def update_liability(
                 original_amount,
                 date_created,
                 due_date,
-                status,
-                liability_id
-            )
+                effective_status,
+                liability_id,
+            ),
+        )
+
+        _record_liability_balance(
+            connection,
+            liability_id,
+            date_created,
+            remaining,
+            effective_status,
+            "Liability updated",
         )
 
         connection.commit()
@@ -151,13 +310,64 @@ def close_liability(liability_id):
     connection = get_connection()
 
     try:
+        liability = connection.execute(
+            """
+            SELECT original_amount, date_created, status
+            FROM liabilities
+            WHERE id = ?
+            """,
+            (liability_id,),
+        ).fetchone()
+
+        if not liability:
+            raise ValueError("Liability not found")
+
+        paid = connection.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM liability_payments
+            WHERE liability_id = ?
+            """,
+            (liability_id,),
+        ).fetchone()[0]
+
+        remaining = liability[0] - paid
+
+        if remaining != 0:
+            raise ValueError(
+                "Liability cannot be closed while a balance remains"
+            )
+
+        if liability[2] == "PAID":
+            return
+
         connection.execute(
             """
             UPDATE liabilities
             SET status = 'PAID'
             WHERE id = ?
             """,
-            (liability_id,)
+            (liability_id,),
+        )
+
+        latest_date = connection.execute(
+            """
+            SELECT MAX(date)
+            FROM liability_payments
+            WHERE liability_id = ?
+            """,
+            (liability_id,),
+        ).fetchone()[0]
+
+        effective_date = latest_date or liability[1]
+
+        _record_liability_balance(
+            connection,
+            liability_id,
+            effective_date,
+            0,
+            "PAID",
+            "Liability closed",
         )
 
         connection.commit()
@@ -177,11 +387,14 @@ def record_liability(
     amount,
     person_id=None,
     credit_account_id=None,
-    due_date=None
+    due_date=None,
 ):
     connection = get_connection()
 
     try:
+        if amount <= 0:
+            raise ValueError("Liability amount must be greater than zero")
+
         cursor = connection.execute(
             """
             INSERT INTO liabilities (
@@ -201,11 +414,19 @@ def record_liability(
                 description,
                 amount,
                 date,
-                due_date
-            )
+                due_date,
+            ),
         )
 
         liability_id = cursor.lastrowid
+
+        _record_liability_balance(
+            connection,
+            liability_id,
+            date,
+            amount,
+            "OPEN",
+        )
 
         transaction_id = create_transaction_with_connection(
             connection,
@@ -213,7 +434,7 @@ def record_liability(
             description,
             "LIABILITY",
             None,
-            [(account_id, amount)]
+            [(account_id, amount)],
         )
 
         connection.commit()
@@ -233,30 +454,33 @@ def record_liability_payment(
     description,
     account_id,
     liability_id,
-    amount
+    amount,
 ):
     connection = get_connection()
 
     try:
         liability = connection.execute(
             """
-            SELECT
-                original_amount,
-                status
+            SELECT original_amount, date_created, status
             FROM liabilities
             WHERE id = ?
             """,
-            (liability_id,)
+            (liability_id,),
         ).fetchone()
 
         if not liability:
             raise ValueError("Liability not found")
 
-        if liability[1] == "PAID":
+        if liability[2] == "PAID":
             raise ValueError("Liability is already paid")
 
         if amount <= 0:
             raise ValueError("Payment must be greater than zero")
+
+        if date < liability[1]:
+            raise ValueError(
+                "Payment date cannot be before liability creation"
+            )
 
         paid = connection.execute(
             """
@@ -264,7 +488,7 @@ def record_liability_payment(
             FROM liability_payments
             WHERE liability_id = ?
             """,
-            (liability_id,)
+            (liability_id,),
         ).fetchone()[0]
 
         remaining = liability[0] - paid
@@ -278,7 +502,7 @@ def record_liability_payment(
             description,
             "LIABILITY_PAYMENT",
             None,
-            [(account_id, -amount)]
+            [(account_id, -amount)],
         )
 
         connection.execute(
@@ -295,21 +519,30 @@ def record_liability_payment(
                 liability_id,
                 transaction_id,
                 amount,
-                date
-            )
+                date,
+            ),
         )
 
         new_remaining = remaining - amount
+        new_status = "PAID" if new_remaining == 0 else "OPEN"
 
-        if new_remaining == 0:
-            connection.execute(
-                """
-                UPDATE liabilities
-                SET status = 'PAID'
-                WHERE id = ?
-                """,
-                (liability_id,)
-            )
+        connection.execute(
+            """
+            UPDATE liabilities
+            SET status = ?
+            WHERE id = ?
+            """,
+            (new_status, liability_id),
+        )
+
+        _record_liability_balance(
+            connection,
+            liability_id,
+            date,
+            new_remaining,
+            new_status,
+            "Liability payment",
+        )
 
         connection.commit()
 
@@ -333,7 +566,7 @@ def get_liability_balance(liability_id):
             FROM liabilities
             WHERE id = ?
             """,
-            (liability_id,)
+            (liability_id,),
         ).fetchone()
 
         if not liability:
@@ -345,7 +578,7 @@ def get_liability_balance(liability_id):
             FROM liability_payments
             WHERE liability_id = ?
             """,
-            (liability_id,)
+            (liability_id,),
         ).fetchone()[0]
 
         return liability[0] - paid

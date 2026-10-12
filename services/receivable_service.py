@@ -2,6 +2,40 @@ from database.connection import get_connection
 from services.transaction_service import create_transaction_with_connection
 
 
+def _validate_positive_amount(amount, field_name):
+    if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+        raise ValueError(f"{field_name} must be a positive integer")
+
+
+def _record_receivable_balance(
+    connection,
+    receivable_id,
+    effective_date,
+    outstanding_amount,
+    status,
+    notes=None
+):
+    connection.execute(
+        """
+        INSERT INTO receivable_balance_history (
+            receivable_id,
+            effective_date,
+            outstanding_amount,
+            status,
+            notes
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            receivable_id,
+            effective_date,
+            outstanding_amount,
+            status,
+            notes
+        )
+    )
+
+
 def create_receivable(
     person_id,
     description,
@@ -10,6 +44,16 @@ def create_receivable(
     due_date=None,
     status="OPEN"
 ):
+    _validate_positive_amount(original_amount, "Original amount")
+
+    if status not in ("OPEN", "PAID"):
+        raise ValueError("Invalid receivable status")
+
+    if status == "PAID":
+        outstanding_amount = 0
+    else:
+        outstanding_amount = original_amount
+
     connection = get_connection()
 
     try:
@@ -35,9 +79,19 @@ def create_receivable(
             )
         )
 
-        connection.commit()
+        receivable_id = cursor.lastrowid
 
-        return cursor.lastrowid
+        _record_receivable_balance(
+            connection,
+            receivable_id,
+            date_created,
+            outstanding_amount,
+            status,
+            "Receivable created"
+        )
+
+        connection.commit()
+        return receivable_id
 
     except Exception:
         connection.rollback()
@@ -94,6 +148,79 @@ def get_receivables():
         connection.close()
 
 
+def get_receivable_balance_history(receivable_id):
+    connection = get_connection()
+
+    try:
+        receivable = connection.execute(
+            "SELECT id FROM receivables WHERE id = ?",
+            (receivable_id,)
+        ).fetchone()
+
+        if not receivable:
+            raise ValueError("Receivable not found")
+
+        return connection.execute(
+            """
+            SELECT
+                id,
+                receivable_id,
+                effective_date,
+                outstanding_amount,
+                status,
+                notes,
+                created_at
+            FROM receivable_balance_history
+            WHERE receivable_id = ?
+            ORDER BY effective_date DESC, id DESC
+            """,
+            (receivable_id,)
+        ).fetchall()
+
+    finally:
+        connection.close()
+
+
+def get_receivable_balance_as_of(receivable_id, as_of_date):
+    connection = get_connection()
+
+    try:
+        receivable = connection.execute(
+            """
+            SELECT date_created
+            FROM receivables
+            WHERE id = ?
+            """,
+            (receivable_id,)
+        ).fetchone()
+
+        if not receivable:
+            raise ValueError("Receivable not found")
+
+        if as_of_date < receivable[0]:
+            return None
+
+        balance = connection.execute(
+            """
+            SELECT outstanding_amount
+            FROM receivable_balance_history
+            WHERE receivable_id = ?
+              AND effective_date <= ?
+            ORDER BY effective_date DESC, id DESC
+            LIMIT 1
+            """,
+            (receivable_id, as_of_date)
+        ).fetchone()
+
+        if not balance:
+            return None
+
+        return balance[0]
+
+    finally:
+        connection.close()
+
+
 def update_receivable(
     receivable_id,
     description,
@@ -102,16 +229,57 @@ def update_receivable(
     due_date,
     status
 ):
+    _validate_positive_amount(original_amount, "Original amount")
+
+    if status not in ("OPEN", "PAID"):
+        raise ValueError("Invalid receivable status")
+
     connection = get_connection()
 
     try:
+        receivable = connection.execute(
+            """
+            SELECT date_created
+            FROM receivables
+            WHERE id = ?
+            """,
+            (receivable_id,)
+        ).fetchone()
+
+        if not receivable:
+            raise ValueError("Receivable not found")
+
+        if date_created != receivable[0]:
+            raise ValueError("The creation date cannot be changed")
+
+        paid = connection.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM receivable_payments
+            WHERE receivable_id = ?
+            """,
+            (receivable_id,)
+        ).fetchone()[0]
+
+        if original_amount < paid:
+            raise ValueError("Original amount cannot be less than payments received")
+
+        remaining = original_amount - paid
+
+        if status == "PAID" and remaining != 0:
+            raise ValueError("Receivable cannot be marked paid while a balance remains")
+
+        if remaining == 0:
+            effective_status = "PAID"
+        else:
+            effective_status = "OPEN"
+
         connection.execute(
             """
             UPDATE receivables
             SET
                 description = ?,
                 original_amount = ?,
-                date_created = ?,
                 due_date = ?,
                 status = ?
             WHERE id = ?
@@ -119,11 +287,19 @@ def update_receivable(
             (
                 description,
                 original_amount,
-                date_created,
                 due_date,
-                status,
+                effective_status,
                 receivable_id
             )
+        )
+
+        _record_receivable_balance(
+            connection,
+            receivable_id,
+            date_created,
+            remaining,
+            effective_status,
+            "Receivable updated"
         )
 
         connection.commit()
@@ -140,6 +316,55 @@ def close_receivable(receivable_id):
     connection = get_connection()
 
     try:
+        receivable = connection.execute(
+            """
+            SELECT date_created, status
+            FROM receivables
+            WHERE id = ?
+            """,
+            (receivable_id,)
+        ).fetchone()
+
+        if not receivable:
+            raise ValueError("Receivable not found")
+
+        if receivable[1] == "PAID":
+            return
+
+        paid = connection.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM receivable_payments
+            WHERE receivable_id = ?
+            """,
+            (receivable_id,)
+        ).fetchone()[0]
+
+        original_amount = connection.execute(
+            """
+            SELECT original_amount
+            FROM receivables
+            WHERE id = ?
+            """,
+            (receivable_id,)
+        ).fetchone()[0]
+
+        remaining = original_amount - paid
+
+        if remaining != 0:
+            raise ValueError("Receivable cannot be closed while a balance remains")
+
+        latest_payment = connection.execute(
+            """
+            SELECT MAX(date)
+            FROM receivable_payments
+            WHERE receivable_id = ?
+            """,
+            (receivable_id,)
+        ).fetchone()[0]
+
+        effective_date = latest_payment or receivable[0]
+
         connection.execute(
             """
             UPDATE receivables
@@ -147,6 +372,15 @@ def close_receivable(receivable_id):
             WHERE id = ?
             """,
             (receivable_id,)
+        )
+
+        _record_receivable_balance(
+            connection,
+            receivable_id,
+            effective_date,
+            0,
+            "PAID",
+            "Receivable closed"
         )
 
         connection.commit()
@@ -167,6 +401,8 @@ def record_receivable(
     amount,
     due_date=None
 ):
+    _validate_positive_amount(amount, "Receivable amount")
+
     connection = get_connection()
 
     try:
@@ -192,6 +428,15 @@ def record_receivable(
         )
 
         receivable_id = cursor.lastrowid
+
+        _record_receivable_balance(
+            connection,
+            receivable_id,
+            date,
+            amount,
+            "OPEN",
+            "Receivable recorded"
+        )
 
         transaction_id = create_transaction_with_connection(
             connection,
@@ -244,6 +489,7 @@ def get_receivable_balance(receivable_id):
     finally:
         connection.close()
 
+
 def record_receivable_payment(
     date,
     description,
@@ -251,12 +497,14 @@ def record_receivable_payment(
     receivable_id,
     amount
 ):
+    _validate_positive_amount(amount, "Payment amount")
+
     connection = get_connection()
 
     try:
         receivable = connection.execute(
             """
-            SELECT original_amount
+            SELECT original_amount, date_created, status
             FROM receivables
             WHERE id = ?
             """,
@@ -265,6 +513,14 @@ def record_receivable_payment(
 
         if not receivable:
             raise ValueError("Receivable not found")
+
+        original_amount, date_created, status = receivable
+
+        if date < date_created:
+            raise ValueError("Payment date cannot be before receivable creation")
+
+        if status == "PAID":
+            raise ValueError("Receivable is already paid")
 
         paid = connection.execute(
             """
@@ -275,10 +531,7 @@ def record_receivable_payment(
             (receivable_id,)
         ).fetchone()[0]
 
-        remaining = receivable[0] - paid
-
-        if amount <= 0:
-            raise ValueError("Payment must be greater than zero")
+        remaining = original_amount - paid
 
         if amount > remaining:
             raise ValueError("Payment exceeds remaining receivable")
@@ -311,16 +564,25 @@ def record_receivable_payment(
         )
 
         new_remaining = remaining - amount
+        new_status = "PAID" if new_remaining == 0 else "OPEN"
 
-        if new_remaining == 0:
-            connection.execute(
-                """
-                UPDATE receivables
-                SET status = 'PAID'
-                WHERE id = ?
-                """,
-                (receivable_id,)
-            )
+        connection.execute(
+            """
+            UPDATE receivables
+            SET status = ?
+            WHERE id = ?
+            """,
+            (new_status, receivable_id)
+        )
+
+        _record_receivable_balance(
+            connection,
+            receivable_id,
+            date,
+            new_remaining,
+            new_status,
+            "Payment received"
+        )
 
         connection.commit()
 
