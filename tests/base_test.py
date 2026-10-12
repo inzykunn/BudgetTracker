@@ -14,7 +14,9 @@ class BaseDatabaseTest(unittest.TestCase):
             connection.BASE_DIR / "database" / "schema.sql"
         )
 
-        with sqlite3.connect(self.original_db_path) as db:
+        db = sqlite3.connect(self.original_db_path)
+
+        try:
             db.execute("PRAGMA foreign_keys = ON")
             db.executescript(
                 schema_path.read_text(encoding="utf-8")
@@ -42,6 +44,11 @@ class BaseDatabaseTest(unittest.TestCase):
                 db.execute(f"DELETE FROM {table}")
 
             db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     def tearDown(self):
         connection.DATABASE_PATH = self.original_db_path
