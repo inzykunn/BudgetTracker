@@ -1,143 +1,171 @@
-from database.connection import get_connection
-from services.account_service import create_account, get_accounts
-from services.category_service import create_category, get_categories
-from services.transaction_service import create_transaction, get_transactions, get_account_balance
-from services.people_service import create_person, get_people
-from services.receivable_service import create_receivable, get_receivables
-from services.liability_service import create_liability, get_liabilities
-from services.credit_service import create_credit_account, get_credit_accounts
-from services.asset_service import create_asset, get_assets
-from services.inventory_service import (
-    buy_inventory,
-    get_inventory_items,
-    sell_inventory,
-    calculate_inventory_profit
-)
+import sqlite3
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from database import connection as db_connection
+from services import account_service, asset_service, category_service, credit_service
+from services import finance_service, inventory_service, liability_service
+from services import people_service, receivable_service, transaction_service
+
+SERVICE_MODULES = [
+    account_service, asset_service, category_service, credit_service,
+    finance_service, inventory_service, liability_service,
+    people_service, receivable_service, transaction_service,
+]
 
 
-SCHEMA_PATH = "database/schema.sql"
+class BudgetServiceTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tmp.name) / "budget.db"
+        source = Path(db_connection.DATABASE_PATH)
+        if not source.exists():
+            raise FileNotFoundError(f"Database not found: {source}. Run this test from the project containing data/budget.db.")
+        source_conn = sqlite3.connect(source)
+        dest_conn = sqlite3.connect(self.db_path)
+        source_conn.backup(dest_conn)
+        source_conn.close()
+        dest_conn.close()
 
+        def test_connection():
+            conn = sqlite3.connect(self.db_path)
+            conn.execute("PRAGMA foreign_keys = ON")
+            return conn
 
-def initialize_database():
-    connection = get_connection()
+        self.patches = [patch.object(m, "get_connection", side_effect=test_connection) for m in SERVICE_MODULES if hasattr(m, "get_connection")]
+        for p in self.patches:
+            p.start()
 
-    try:
-        with open(SCHEMA_PATH, "r", encoding="utf-8") as file:
-            schema = file.read()
+        # Clean copied DB so every test is deterministic and does not depend on existing data.
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA foreign_keys = OFF")
+        for table in [
+            "transaction_entries", "transactions", "receivable_payments", "receivables",
+            "liability_payments", "liabilities", "inventory_items", "assets",
+            "credit_accounts", "categories", "people", "accounts",
+        ]:
+            conn.execute(f"DELETE FROM {table}")
+        conn.commit()
+        conn.close()
 
-        connection.executescript(schema)
-        connection.commit()
+    def tearDown(self):
+        for p in reversed(self.patches):
+            p.stop()
+        self.tmp.cleanup()
 
-    finally:
-        connection.close()
+    def test_accounts_people_categories_and_credit(self):
+        a = account_service.create_account("Test Cash", "CASH")
+        self.assertEqual(a, account_service.get_account_by_name("Test Cash")[0])
+        self.assertEqual(a, account_service.create_account("Test Cash", "CASH"))
+        account_service.update_account(a, "Test Wallet", "CASH")
+        self.assertEqual("Test Wallet", account_service.get_account_by_id(a)[1])
+        account_service.deactivate_account(a)
+        self.assertEqual(0, account_service.get_account_by_id(a)[3])
 
+        p = people_service.create_person("Test Person", "CUSTOMER", "notes")
+        self.assertEqual(p, people_service.get_person_by_name("Test Person")[0])
+        self.assertEqual(p, people_service.create_person("Test Person", "CUSTOMER"))
+        people_service.update_person(p, "Updated Person", "CUSTOMER")
+        self.assertEqual("Updated Person", people_service.get_person_by_id(p)[1])
 
-def main():
-    initialize_database()
+        c = category_service.create_category("Food", "EXPENSE")
+        self.assertEqual(c, category_service.get_category_by_name("Food")[0])
+        self.assertEqual(c, category_service.create_category("Food", "EXPENSE"))
 
-    cash_id = create_account("Cash", "CASH")
-    gcash_id = create_account("GCash", "EWALLET")
+        cr = credit_service.create_credit_account("Test Card", 100000)
+        self.assertEqual(cr, credit_service.create_credit_account("Test Card", 100000))
+        credit_service.update_credit_account(cr, "Updated Card", 120000)
+        self.assertEqual("Updated Card", credit_service.get_credit_account_by_id(cr)[1])
+        credit_service.deactivate_credit_account(cr)
+        self.assertEqual(0, credit_service.get_credit_account_by_id(cr)[3])
 
-    category_id = create_category("Test Income", "INCOME")
+    def test_transactions_and_finance_balance(self):
+        account = account_service.create_account("Cash", "CASH")
+        cat = category_service.create_category("Salary", "INCOME")
+        tid = finance_service.record_income("2026-10-01", "Salary", account, 50000, cat)
+        self.assertEqual(50000, transaction_service.get_account_balance(account))
+        transaction, entries = transaction_service.get_transaction_by_id(tid)
+        self.assertEqual("INCOME", transaction[3])
+        self.assertEqual([(entries[0][1], entries[0][2])], [(account, 50000)])
 
-    transaction_id = create_transaction(
-        "2026-10-04",
-        "Test income",
-        "INCOME",
-        category_id,
-        [(cash_id, 100000)]
-    )
+        bank = account_service.create_account("Bank", "CASH")
+        transfer_id = finance_service.record_transfer("2026-10-02", "Move", account, bank, 10000)
+        self.assertEqual(40000, transaction_service.get_account_balance(account))
+        self.assertEqual(10000, transaction_service.get_account_balance(bank))
+        self.assertTrue(transaction_service.get_transaction_by_id(transfer_id)[0])
 
-    person_id = create_person(
-        "Mama",
-        "PERSON",
-        "Family"
-    )
+        finance_service.record_expense("2026-10-03", "Food", account, 2500, cat)
+        self.assertEqual(37500, transaction_service.get_account_balance(account))
 
-    receivable_id = create_receivable(
-        person_id,
-        "Borrowed money",
-        150000,
-        "2026-10-04"
-    )
+    def test_asset_lifecycle(self):
+        account = account_service.create_account("Cash", "CASH")
+        tid, asset = asset_service.buy_asset("2026-10-01", "Laptop", account, "Laptop", "Electronics", 30000, "2026-10-01")
+        self.assertEqual(-30000, transaction_service.get_account_balance(account))
+        self.assertEqual("ACTIVE", asset_service.get_asset_by_id(asset)[6])
+        asset_service.update_asset_value(asset, 28000)
+        self.assertEqual(28000, asset_service.get_asset_by_id(asset)[4])
+        tid2, profit = asset_service.sell_asset("2026-10-05", "Sell Laptop", account, asset, 32000, "2026-10-05")
+        self.assertEqual(4000, profit)
+        self.assertEqual(2000, transaction_service.get_account_balance(account))
+        with self.assertRaises(ValueError):
+            asset_service.sell_asset("2026-10-06", "Again", account, asset, 1, "2026-10-06")
 
-    liability_id = create_liability(
-        "Test liability",
-        50000,
-        "2026-10-04"
-    )
+        disposable = asset_service.create_asset("Old Phone", "Electronics", 5000, 5000, "2026-10-01")
+        asset_service.dispose_asset(disposable)
+        self.assertEqual("DISPOSED", asset_service.get_asset_by_id(disposable)[6])
+        with self.assertRaises(ValueError):
+            asset_service.dispose_asset(disposable)
 
-    credit_id = create_credit_account(
-        "SPayLater",
-        3000000
-    )
+    def test_inventory_lifecycle(self):
+        account = account_service.create_account("Cash", "CASH")
+        tid, item = inventory_service.buy_inventory("2026-10-01", "Buy Item", account, "Item", 10000, "2026-10-01")
+        self.assertEqual(-10000, transaction_service.get_account_balance(account))
+        tid2, profit = inventory_service.sell_inventory("2026-10-03", "Sell Item", account, item, 15000, "2026-10-03")
+        self.assertEqual(5000, profit)
+        self.assertEqual(5000, transaction_service.get_account_balance(account))
+        self.assertEqual(5000, inventory_service.calculate_inventory_profit(item))
+        with self.assertRaises(ValueError):
+            inventory_service.sell_inventory("2026-10-04", "Again", account, item, 1, "2026-10-04")
+        with self.assertRaises(ValueError):
+            inventory_service.sell_inventory("2026-10-04", "Bad", account, 999999, 1, "2026-10-04")
 
-    print("=== ACCOUNTS ===")
-    print(get_accounts())
+    def test_receivable_lifecycle_and_overpayment(self):
+        account = account_service.create_account("Cash", "CASH")
+        person = people_service.create_person("Customer", "CUSTOMER")
+        tid, rid = receivable_service.record_receivable("2026-10-01", "Loan", account, person, 10000, "2026-10-15")
+        self.assertEqual(-10000, transaction_service.get_account_balance(account))
+        self.assertEqual(10000, receivable_service.get_receivable_balance(rid))
+        pay_tid = receivable_service.record_receivable_payment("2026-10-05", "Payment", account, rid, 4000)
+        self.assertEqual(6000, receivable_service.get_receivable_balance(rid))
+        receivable_service.record_receivable_payment("2026-10-10", "Final", account, rid, 6000)
+        self.assertEqual(0, receivable_service.get_receivable_balance(rid))
+        self.assertEqual("PAID", receivable_service.get_receivable_by_id(rid)[6])
+        with self.assertRaises(ValueError):
+            receivable_service.record_receivable_payment("2026-10-11", "Over", account, rid, 1)
 
-    print("\n=== CATEGORIES ===")
-    print(get_categories())
+    def test_liability_lifecycle_and_overpayment(self):
+        account = account_service.create_account("Cash", "CASH")
+        tid, lid = liability_service.record_liability("2026-10-01", "Debt", account, 10000)
+        self.assertEqual(10000, transaction_service.get_account_balance(account))
+        self.assertEqual(10000, liability_service.get_liability_balance(lid))
+        liability_service.record_liability_payment("2026-10-05", "Payment", account, lid, 4000)
+        self.assertEqual(6000, liability_service.get_liability_balance(lid))
+        liability_service.record_liability_payment("2026-10-10", "Final", account, lid, 6000)
+        self.assertEqual(0, liability_service.get_liability_balance(lid))
+        self.assertEqual("PAID", liability_service.get_liability_by_id(lid)[7])
+        with self.assertRaises(ValueError):
+            liability_service.record_liability_payment("2026-10-11", "Over", account, lid, 1)
 
-    print("\n=== TRANSACTIONS ===")
-    print(get_transactions())
+    def test_transaction_rollback(self):
+        account = account_service.create_account("Cash", "CASH")
+        before = len(transaction_service.get_transactions())
+        with self.assertRaises(sqlite3.IntegrityError):
+            transaction_service.create_transaction("2026-10-01", "Broken", "EXPENSE", None, [(999999, -100)])
+        self.assertEqual(before, len(transaction_service.get_transactions()))
+        self.assertEqual(0, transaction_service.get_account_balance(account))
 
-    print("\n=== CASH BALANCE ===")
-    print(get_account_balance(cash_id))
-
-    print("\n=== PEOPLE ===")
-    print(get_people())
-
-    print("\n=== RECEIVABLES ===")
-    print(get_receivables())
-
-    print("\n=== LIABILITIES ===")
-    print(get_liabilities())
-
-    print("\n=== CREDIT ACCOUNTS ===")
-    print(get_credit_accounts())
-
-    print("\n=== CREATED IDS ===")
-    print("Transaction:", transaction_id)
-    print("Person:", person_id)
-    print("Receivable:", receivable_id)
-    print("Liability:", liability_id)
-    print("Credit:", credit_id)
-
-    asset_id = create_asset(
-        "Test PC",
-        "Electronics",
-        800000,
-        800000,
-        "2026-10-04",
-        "ACTIVE",
-        "Test asset"
-    )
-
-    inventory_id = buy_inventory(
-        "Test iPhone",
-        1300000,
-        "2026-10-04",
-        "Test inventory"
-    )
-
-    profit = sell_inventory(
-        inventory_id,
-        1400000,
-        "2026-10-04"
-    )
-
-    print("\n=== ASSETS ===")
-    print(get_assets())
-
-    print("\n=== INVENTORY ===")
-    print(get_inventory_items())
-
-    print("\n=== INVENTORY PROFIT ===")
-    print(profit)
-
-    print("\n=== CREATED IDS ===")
-    print("Asset:", asset_id)
-    print("Inventory:", inventory_id)
 
 if __name__ == "__main__":
-    main()
+    unittest.main(verbosity=2)

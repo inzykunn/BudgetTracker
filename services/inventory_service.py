@@ -1,4 +1,5 @@
 from database.connection import get_connection
+from services.transaction_service import create_transaction_with_connection
 
 
 def create_inventory_item(
@@ -8,7 +9,7 @@ def create_inventory_item(
     sale_price=None,
     sold_date=None,
     status="AVAILABLE",
-    notes=None
+    notes=None,
 ):
     connection = get_connection()
 
@@ -18,27 +19,34 @@ def create_inventory_item(
             INSERT INTO inventory_items (
                 name,
                 purchase_cost,
-                sale_price,
                 acquired_date,
-                sold_date,
-                status,
-                notes
+                status
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?)
             """,
             (
                 name,
                 purchase_cost,
-                sale_price,
                 acquired_date,
-                sold_date,
                 status,
-                notes
-            )
+            ),
         )
 
+        item_id = cursor.lastrowid
+
+        # Update optional fields only when provided.
+        if sale_price is not None or sold_date is not None or notes is not None:
+            connection.execute(
+                """
+                UPDATE inventory_items
+                SET sale_price = ?, sold_date = ?, notes = ?
+                WHERE id = ?
+                """,
+                (sale_price, sold_date, notes, item_id),
+            )
+
         connection.commit()
-        return cursor.lastrowid
+        return item_id
 
     except Exception:
         connection.rollback()
@@ -66,7 +74,7 @@ def get_inventory_item_by_id(item_id):
             FROM inventory_items
             WHERE id = ?
             """,
-            (item_id,)
+            (item_id,),
         ).fetchone()
 
     finally:
@@ -105,7 +113,7 @@ def update_inventory_item(
     sale_price=None,
     sold_date=None,
     status="AVAILABLE",
-    notes=None
+    notes=None,
 ):
     connection = get_connection()
 
@@ -116,8 +124,8 @@ def update_inventory_item(
             SET
                 name = ?,
                 purchase_cost = ?,
-                sale_price = ?,
                 acquired_date = ?,
+                sale_price = ?,
                 sold_date = ?,
                 status = ?,
                 notes = ?
@@ -126,13 +134,13 @@ def update_inventory_item(
             (
                 name,
                 purchase_cost,
-                sale_price,
                 acquired_date,
+                sale_price,
                 sold_date,
                 status,
                 notes,
-                item_id
-            )
+                item_id,
+            ),
         )
 
         connection.commit()
@@ -146,21 +154,67 @@ def update_inventory_item(
 
 
 def buy_inventory(
+    date,
+    description,
+    account_id,
     name,
     purchase_cost,
     acquired_date,
-    notes=None
+    notes=None,
 ):
-    return create_inventory_item(
-        name=name,
-        purchase_cost=purchase_cost,
-        acquired_date=acquired_date,
-        status="AVAILABLE",
-        notes=notes
-    )
+    connection = get_connection()
+
+    try:
+        cursor = connection.execute(
+            """
+            INSERT INTO inventory_items (
+                name,
+                purchase_cost,
+                acquired_date,
+                status,
+                notes
+            )
+            VALUES (?, ?, ?, 'AVAILABLE', ?)
+            """,
+            (
+                name,
+                purchase_cost,
+                acquired_date,
+                notes,
+            ),
+        )
+
+        item_id = cursor.lastrowid
+
+        transaction_id = create_transaction_with_connection(
+            connection,
+            date,
+            description,
+            "EXPENSE",
+            None,
+            [(account_id, -purchase_cost)],
+        )
+
+        connection.commit()
+
+        return transaction_id, item_id
+
+    except Exception:
+        connection.rollback()
+        raise
+
+    finally:
+        connection.close()
 
 
-def sell_inventory(item_id, sale_price, sold_date):
+def sell_inventory(
+    date,
+    description,
+    account_id,
+    item_id,
+    sale_price,
+    sold_date,
+):
     connection = get_connection()
 
     try:
@@ -170,7 +224,7 @@ def sell_inventory(item_id, sale_price, sold_date):
             FROM inventory_items
             WHERE id = ?
             """,
-            (item_id,)
+            (item_id,),
         ).fetchone()
 
         if not item:
@@ -178,6 +232,9 @@ def sell_inventory(item_id, sale_price, sold_date):
 
         if item[1] == "SOLD":
             raise ValueError("Inventory item is already sold")
+
+        if sale_price <= 0:
+            raise ValueError("Sale price must be greater than zero")
 
         connection.execute(
             """
@@ -188,12 +245,27 @@ def sell_inventory(item_id, sale_price, sold_date):
                 status = 'SOLD'
             WHERE id = ?
             """,
-            (sale_price, sold_date, item_id)
+            (
+                sale_price,
+                sold_date,
+                item_id,
+            ),
+        )
+
+        transaction_id = create_transaction_with_connection(
+            connection,
+            date,
+            description,
+            "INCOME",
+            None,
+            [(account_id, sale_price)],
         )
 
         connection.commit()
 
-        return sale_price - item[0]
+        profit = sale_price - item[0]
+
+        return transaction_id, profit
 
     except Exception:
         connection.rollback()
@@ -213,7 +285,7 @@ def calculate_inventory_profit(item_id):
             FROM inventory_items
             WHERE id = ?
             """,
-            (item_id,)
+            (item_id,),
         ).fetchone()
 
         if not item:

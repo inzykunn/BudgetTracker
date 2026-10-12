@@ -1,39 +1,27 @@
 from database.connection import get_connection
 
 
-def create_transaction(date, description, transaction_type, category_id, entries):
+def create_transaction(
+    date,
+    description,
+    transaction_type,
+    category_id,
+    entries
+):
     connection = get_connection()
 
     try:
-        cursor = connection.execute(
-            """
-            INSERT INTO transactions (
-                date,
-                description,
-                type,
-                category_id
-            )
-            VALUES (?, ?, ?, ?)
-            """,
-            (date, description, transaction_type, category_id)
+        transaction_id = create_transaction_with_connection(
+            connection,
+            date,
+            description,
+            transaction_type,
+            category_id,
+            entries
         )
 
-        transaction_id = cursor.lastrowid
-
-        for account_id, amount in entries:
-            connection.execute(
-                """
-                INSERT INTO transaction_entries (
-                    transaction_id,
-                    account_id,
-                    amount
-                )
-                VALUES (?, ?, ?)
-                """,
-                (transaction_id, account_id, amount)
-            )
-
         connection.commit()
+
         return transaction_id
 
     except Exception:
@@ -42,6 +30,54 @@ def create_transaction(date, description, transaction_type, category_id, entries
 
     finally:
         connection.close()
+
+
+def create_transaction_with_connection(
+    connection,
+    date,
+    description,
+    transaction_type,
+    category_id,
+    entries
+):
+    cursor = connection.execute(
+        """
+        INSERT INTO transactions (
+            date,
+            description,
+            type,
+            category_id
+        )
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            date,
+            description,
+            transaction_type,
+            category_id
+        )
+    )
+
+    transaction_id = cursor.lastrowid
+
+    for account_id, amount in entries:
+        connection.execute(
+            """
+            INSERT INTO transaction_entries (
+                transaction_id,
+                account_id,
+                amount
+            )
+            VALUES (?, ?, ?)
+            """,
+            (
+                transaction_id,
+                account_id,
+                amount
+            )
+        )
+
+    return transaction_id
 
 
 def get_transaction_by_id(transaction_id):
