@@ -1,5 +1,7 @@
 import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
 
 from database import connection
 
@@ -8,41 +10,16 @@ class BaseDatabaseTest(unittest.TestCase):
 
     def setUp(self):
         self.original_db_path = connection.DATABASE_PATH
-        connection.DATABASE_PATH = self.original_db_path
-
-        schema_path = (
-            connection.BASE_DIR / "database" / "schema.sql"
-        )
-
-        db = sqlite3.connect(self.original_db_path)
+        temporary_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        temporary_file.close()
+        self.test_db_path = Path(temporary_file.name)
+        connection.DATABASE_PATH = self.test_db_path
+        schema_path = connection.BASE_DIR / "database" / "schema.sql"
+        db = sqlite3.connect(self.test_db_path)
 
         try:
             db.execute("PRAGMA foreign_keys = ON")
-            db.executescript(
-                schema_path.read_text(encoding="utf-8")
-            )
-
-            tables = [
-                "liability_payments",
-                "receivable_payments",
-                "liability_balance_history",
-                "receivable_balance_history",
-                "asset_valuations",
-                "transaction_entries",
-                "transactions",
-                "liabilities",
-                "receivables",
-                "inventory_items",
-                "assets",
-                "credit_accounts",
-                "people",
-                "categories",
-                "accounts",
-            ]
-
-            for table in tables:
-                db.execute(f"DELETE FROM {table}")
-
+            db.executescript(schema_path.read_text(encoding="utf-8"))
             db.commit()
         except Exception:
             db.rollback()
@@ -52,6 +29,7 @@ class BaseDatabaseTest(unittest.TestCase):
 
     def tearDown(self):
         connection.DATABASE_PATH = self.original_db_path
+        self.test_db_path.unlink(missing_ok=True)
 
     def create_account(self, name="Test Cash", account_type="CASH"):
         from services.account_service import create_account

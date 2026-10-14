@@ -1,3 +1,4 @@
+from datetime import date
 from database.connection import get_connection
 from services.transaction_service import create_transaction_with_connection
 
@@ -293,13 +294,29 @@ def update_receivable(
             )
         )
 
-        _record_receivable_balance(
-            connection,
-            receivable_id,
-            date_created,
-            remaining,
-            effective_status,
-            "Receivable updated"
+        latest_payment_date = connection.execute(
+            "SELECT MAX(date) FROM receivable_payments WHERE receivable_id = ?",
+            (receivable_id,),
+        ).fetchone()[0]
+        latest_history_date = connection.execute(
+            "SELECT MAX(effective_date) FROM receivable_balance_history WHERE receivable_id = ?",
+            (receivable_id,),
+        ).fetchone()[0]
+        effective_date = max(
+            value for value in (date.today().isoformat(), latest_payment_date, latest_history_date)
+            if value is not None
+        )
+        connection.execute(
+            """
+            INSERT INTO receivable_balance_history (
+                receivable_id, effective_date, outstanding_amount, status, notes
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(receivable_id, effective_date) DO UPDATE SET
+                outstanding_amount = excluded.outstanding_amount,
+                status = excluded.status,
+                notes = excluded.notes
+            """,
+            (receivable_id, effective_date, remaining, effective_status, "Receivable updated"),
         )
 
         connection.commit()

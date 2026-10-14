@@ -253,3 +253,18 @@ class ReceivableServiceTest(BaseDatabaseTest):
             [(entry[1], entry[2]) for entry in payment_entries],
             [(account, 4000)]
         )
+    def test_update_preserves_creation_date_and_past_balance(self):
+        account = account_service.create_account("Cash", "CASH")
+        person = people_service.create_person("Jordan", "PERSON")
+        _, rid = receivable_service.record_receivable(
+            "2026-10-01", "Loan", account, person, 10000
+        )
+        with self.assertRaises(ValueError):
+            receivable_service.update_receivable(
+                rid, "Loan", 10000, "2026-10-05", None, "OPEN"
+            )
+        receivable_service.update_receivable(
+            rid, "Updated loan", 12000, "2026-10-01", None, "OPEN"
+        )
+        self.assertEqual(receivable_service.get_receivable_balance_as_of(rid, "2026-10-01"), 10000)
+        self.assertEqual(receivable_service.get_receivable_balance(rid), 12000)

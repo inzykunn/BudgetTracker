@@ -186,3 +186,20 @@ class InventoryServiceTest(BaseDatabaseTest):
             transaction_service.get_account_balance(account),
             -10000,
         )
+    def test_update_cannot_bypass_inventory_sale(self):
+        item_id = inventory_service.create_inventory_item(
+            "Keyboard", 2000, "2026-10-01"
+        )
+        with self.assertRaises(ValueError):
+            inventory_service.update_inventory_item(
+                item_id, "Keyboard", 2000, "2026-10-01",
+                sale_price=3000, sold_date="2026-10-02", status="SOLD"
+            )
+        self.assertEqual(inventory_service.get_inventory_item_by_id(item_id)[6], "AVAILABLE")
+
+    def test_reject_invalid_purchase_cost(self):
+        for value in (-1, True, 2.5):
+            with self.assertRaises(ValueError):
+                inventory_service.buy_inventory(
+                    "2026-10-01", "Invalid", 1, "Keyboard", value, "2026-10-01"
+                )

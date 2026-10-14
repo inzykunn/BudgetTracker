@@ -1,3 +1,4 @@
+from datetime import date
 from database.connection import get_connection
 from services.transaction_service import create_transaction_with_connection
 
@@ -43,8 +44,10 @@ def create_liability(
     connection = get_connection()
 
     try:
-        if original_amount <= 0:
-            raise ValueError("Original amount must be greater than zero")
+        if not isinstance(original_amount, int) or isinstance(original_amount, bool) or original_amount <= 0:
+            raise ValueError("Original amount must be a positive integer")
+        if status != "OPEN":
+            raise ValueError("A liability must be paid through recorded payments")
 
         cursor = connection.execute(
             """
@@ -145,11 +148,7 @@ def get_liability_balance_history(liability_id):
 
     try:
         liability = connection.execute(
-            """
-            SELECT id
-            FROM liabilities
-            WHERE id = ?
-            """,
+            "SELECT id FROM liabilities WHERE id = ?",
             (liability_id,),
         ).fetchone()
 
@@ -230,20 +229,21 @@ def update_liability(
     connection = get_connection()
 
     try:
-        if original_amount <= 0:
-            raise ValueError("Original amount must be greater than zero")
+        if not isinstance(original_amount, int) or isinstance(original_amount, bool) or original_amount <= 0:
+            raise ValueError("Original amount must be a positive integer")
+
+        if status not in ("OPEN", "PAID"):
+            raise ValueError("Invalid liability status")
 
         liability = connection.execute(
-            """
-            SELECT id
-            FROM liabilities
-            WHERE id = ?
-            """,
+            "SELECT date_created FROM liabilities WHERE id = ?",
             (liability_id,),
         ).fetchone()
 
         if not liability:
             raise ValueError("Liability not found")
+        if date_created != liability[0]:
+            raise ValueError("The creation date cannot be changed")
 
         paid = connection.execute(
             """
@@ -260,7 +260,9 @@ def update_liability(
             )
 
         remaining = original_amount - paid
-        effective_status = "PAID" if remaining == 0 else status
+        if status == "PAID" and remaining != 0:
+            raise ValueError("Liability cannot be marked paid while a balance remains")
+        effective_status = "PAID" if remaining == 0 else "OPEN"
 
         connection.execute(
             """
@@ -287,13 +289,29 @@ def update_liability(
             ),
         )
 
-        _record_liability_balance(
-            connection,
-            liability_id,
-            date_created,
-            remaining,
-            effective_status,
-            "Liability updated",
+        latest_payment_date = connection.execute(
+            "SELECT MAX(date) FROM liability_payments WHERE liability_id = ?",
+            (liability_id,),
+        ).fetchone()[0]
+        latest_history_date = connection.execute(
+            "SELECT MAX(effective_date) FROM liability_balance_history WHERE liability_id = ?",
+            (liability_id,),
+        ).fetchone()[0]
+        effective_date = max(
+            value for value in (date.today().isoformat(), latest_payment_date, latest_history_date)
+            if value is not None
+        )
+        connection.execute(
+            """
+            INSERT INTO liability_balance_history (
+                liability_id, effective_date, outstanding_amount, status, notes
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(liability_id, effective_date) DO UPDATE SET
+                outstanding_amount = excluded.outstanding_amount,
+                status = excluded.status,
+                notes = excluded.notes
+            """,
+            (liability_id, effective_date, remaining, effective_status, "Liability updated"),
         )
 
         connection.commit()
@@ -456,6 +474,9 @@ def record_liability_payment(
     liability_id,
     amount,
 ):
+    if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+        raise ValueError("Payment amount must be a positive integer")
+
     connection = get_connection()
 
     try:
@@ -473,9 +494,6 @@ def record_liability_payment(
 
         if liability[2] == "PAID":
             raise ValueError("Liability is already paid")
-
-        if amount <= 0:
-            raise ValueError("Payment must be greater than zero")
 
         if date < liability[1]:
             raise ValueError(

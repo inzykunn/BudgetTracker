@@ -1,5 +1,6 @@
 from tests.base_test import BaseDatabaseTest
 from services import account_service, finance_service, transaction_service
+from services import category_service
 
 
 class FinanceServiceTest(BaseDatabaseTest):
@@ -133,3 +134,55 @@ class FinanceServiceTest(BaseDatabaseTest):
             ),
             5800,
         )
+
+    def test_income_and_expense_transaction_types_and_signs(self):
+        account = account_service.create_account("Cash", "CASH")
+
+        income_id = finance_service.record_income(
+            "2026-10-01", "Pay", account, 5000
+        )
+        expense_id = finance_service.record_expense(
+            "2026-10-02", "Food", account, 1200
+        )
+
+        income, income_entries = transaction_service.get_transaction_by_id(
+            income_id
+        )
+        expense, expense_entries = transaction_service.get_transaction_by_id(
+            expense_id
+        )
+
+        self.assertEqual(income[3], "INCOME")
+        self.assertEqual(income_entries[0][2], 5000)
+        self.assertEqual(expense[3], "EXPENSE")
+        self.assertEqual(expense_entries[0][2], -1200)
+
+    def test_income_accepts_category(self):
+        account = account_service.create_account("Cash", "CASH")
+        category = category_service.create_category("Salary", "INCOME")
+
+        transaction_id = finance_service.record_income(
+            "2026-10-01", "Pay", account, 5000, category
+        )
+
+        transaction, _ = transaction_service.get_transaction_by_id(
+            transaction_id
+        )
+
+        self.assertEqual(transaction[3], "INCOME")
+        self.assertEqual(transaction[4], category)
+
+    def test_expense_accepts_category(self):
+        account = account_service.create_account("Cash", "CASH")
+        category = category_service.create_category("Food", "EXPENSE")
+
+        transaction_id = finance_service.record_expense(
+            "2026-10-01", "Groceries", account, 1200, category
+        )
+
+        transaction, _ = transaction_service.get_transaction_by_id(
+            transaction_id
+        )
+
+        self.assertEqual(transaction[3], "EXPENSE")
+        self.assertEqual(transaction[4], category)

@@ -257,3 +257,17 @@ class LiabilityServiceTest(BaseDatabaseTest):
             [(entry[1], entry[2]) for entry in payment_entries],
             [(account, -4000)],
         )
+    def test_update_preserves_creation_date_and_past_balance(self):
+        account = account_service.create_account("Cash", "CASH")
+        _, lid = liability_service.record_liability(
+            "2026-10-01", "Debt", account, 10000
+        )
+        with self.assertRaises(ValueError):
+            liability_service.update_liability(
+                lid, "Debt", 10000, "2026-10-05"
+            )
+        liability_service.update_liability(
+            lid, "Updated debt", 12000, "2026-10-01"
+        )
+        self.assertEqual(liability_service.get_liability_balance_as_of(lid, "2026-10-01"), 10000)
+        self.assertEqual(liability_service.get_liability_balance(lid), 12000)

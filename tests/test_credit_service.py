@@ -15,3 +15,12 @@ class CreditServiceTest(BaseDatabaseTest):
     def test_duplicate_name_returns_existing_id(self):
         first = credit_service.create_credit_account("Card", 50000)
         self.assertEqual(credit_service.create_credit_account("Card", 90000), first)
+
+    def test_reject_invalid_credit_limits_and_missing_updates(self):
+        for value in (-1, True, 1.5, "100"):
+            with self.assertRaises(ValueError):
+                credit_service.create_credit_account("Invalid", value)
+        with self.assertRaises(ValueError):
+            credit_service.update_credit_account(999999, "Missing", 1000)
+        with self.assertRaises(ValueError):
+            credit_service.deactivate_credit_account(999999)
