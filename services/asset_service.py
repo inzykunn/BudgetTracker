@@ -1,11 +1,4 @@
 from database.connection import get_connection
-
-
-def _validate_amount(amount, field_name, allow_zero=True):
-    minimum = 0 if allow_zero else 1
-    if not isinstance(amount, int) or isinstance(amount, bool) or amount < minimum:
-        qualifier = "non-negative" if allow_zero else "positive"
-        raise ValueError(f"{field_name} must be a {qualifier} integer")
 from services.transaction_service import create_transaction_with_connection
 
 
@@ -21,8 +14,11 @@ def create_asset(
     connection = get_connection()
 
     try:
-        _validate_amount(purchase_cost, "Purchase cost")
-        _validate_amount(current_value, "Current value")
+        if purchase_cost < 0:
+            raise ValueError("Purchase cost cannot be negative")
+
+        if current_value < 0:
+            raise ValueError("Current value cannot be negative")
 
         cursor = connection.execute(
             """
@@ -205,8 +201,11 @@ def update_asset(
     connection = get_connection()
 
     try:
-        _validate_amount(purchase_cost, "Purchase cost")
-        _validate_amount(current_value, "Current value")
+        if purchase_cost < 0:
+            raise ValueError("Purchase cost cannot be negative")
+
+        if current_value < 0:
+            raise ValueError("Current value cannot be negative")
 
         asset = connection.execute(
             """
@@ -288,7 +287,8 @@ def update_asset_value(asset_id, current_value, valuation_date=None, notes=None)
     connection = get_connection()
 
     try:
-        _validate_amount(current_value, "Current value")
+        if current_value < 0:
+            raise ValueError("Current value cannot be negative")
 
         asset = connection.execute(
             """
@@ -410,12 +410,14 @@ def buy_asset(
     connection = get_connection()
 
     try:
-        _validate_amount(purchase_cost, "Purchase cost", allow_zero=False)
+        if purchase_cost <= 0:
+            raise ValueError("Purchase cost must be greater than zero")
 
         if current_value is None:
             current_value = purchase_cost
 
-        _validate_amount(current_value, "Current value")
+        if current_value < 0:
+            raise ValueError("Current value cannot be negative")
 
         cursor = connection.execute(
             """
@@ -507,12 +509,8 @@ def sell_asset(
         if asset[1] in ("DISPOSED", "SOLD"):
             raise ValueError("Asset is already disposed or sold")
 
-        _validate_amount(sale_price, "Sale price", allow_zero=False)
-        acquired_date = connection.execute(
-            "SELECT acquired_date FROM assets WHERE id = ?", (asset_id,)
-        ).fetchone()[0]
-        if sold_date < acquired_date:
-            raise ValueError("Sold date cannot be before the acquisition date")
+        if sale_price <= 0:
+            raise ValueError("Sale price must be greater than zero")
 
         connection.execute(
             """

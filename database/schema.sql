@@ -189,3 +189,15 @@ CREATE INDEX IF NOT EXISTS idx_receivable_payments_date
 
 CREATE INDEX IF NOT EXISTS idx_liability_payments_date
     ON liability_payments(date);
+CREATE TABLE IF NOT EXISTS financial_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    snapshot_date DATE NOT NULL,
+    notes TEXT,
+    finalized INTEGER NOT NULL DEFAULT 0 CHECK (finalized IN (0, 1)),
+    data_json TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_snapshots_date
+    ON financial_snapshots(snapshot_date DESC, id DESC);
