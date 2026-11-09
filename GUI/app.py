@@ -7,6 +7,12 @@ from GUI.pages.placeholder import PlaceholderPage
 from GUI.pages.transactions import TransactionsPage
 from GUI.pages.accounts import AccountsPage
 from GUI.pages.categories import CategoriesPage
+from GUI.pages.assets import AssetsPage
+from GUI.pages.inventory import InventoryPage
+from GUI.pages.receivables import ReceivablesPage
+from GUI.pages.liabilities import LiabilitiesPage
+from GUI.pages.transfer import TransferPage
+from GUI.pages.reports import ReportsPage
 from GUI.styles.colors import BG, CONTENT
 
 
@@ -72,6 +78,18 @@ class BudgetTrackerApp(ctk.CTk):
             page = AccountsPage(self.page_container, self.navigate)
         elif page_name == "Categories":
             page = CategoriesPage(self.page_container, self.navigate)
+        elif page_name == "Assets":
+            page = AssetsPage(self.page_container, self.navigate)
+        elif page_name == "Inventory":
+            page = InventoryPage(self.page_container, self.navigate)
+        elif page_name == "Receivables":
+            page = ReceivablesPage(self.page_container, self.navigate)
+        elif page_name == "Liabilities":
+            page = LiabilitiesPage(self.page_container, self.navigate)
+        elif page_name == "Transfer":
+            page = TransferPage(self.page_container, self.navigate)
+        elif page_name == "Reports":
+            page = ReportsPage(self.page_container, self.navigate)
         else:
             page = PlaceholderPage(self.page_container, page_name)
 
