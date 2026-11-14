@@ -10,9 +10,7 @@ from GUI.styles.theme import (
 )
 
 
-class QuickActionButtons(ctk.CTkFrame):
-    """Reusable row/grid of quick-action buttons."""
-
+class Buttons(ctk.CTkFrame):
     def __init__(self, master, actions, columns=None):
         super().__init__(
             master,
@@ -21,6 +19,7 @@ class QuickActionButtons(ctk.CTkFrame):
         )
 
         self.actions = actions
+        self.buttons = []
 
         if not actions:
             return
@@ -36,7 +35,14 @@ class QuickActionButtons(ctk.CTkFrame):
         for index, action in enumerate(actions):
             row = index // columns
             column = index % columns
-            self._create_button(action, row, column)
+
+            button = self._create_button(
+                action,
+                row,
+                column,
+            )
+
+            self.buttons.append(button)
 
     def _create_button(self, action, row, column):
         label, callback = action
@@ -62,3 +68,48 @@ class QuickActionButtons(ctk.CTkFrame):
         )
 
         return button
+
+    def set_actions(self, actions):
+        self.clear()
+
+        self.actions = actions
+
+        if not actions:
+            return
+
+        columns = min(len(actions), len(self.buttons) or len(actions))
+
+        for column in range(columns):
+            self.grid_columnconfigure(column, weight=1)
+
+        for index, action in enumerate(actions):
+            row = index // columns
+            column = index % columns
+
+            button = self._create_button(
+                action,
+                row,
+                column,
+            )
+
+            self.buttons.append(button)
+
+    def clear(self):
+        for button in self.buttons:
+            button.destroy()
+
+        self.buttons.clear()
+
+    def set_button_text(self, index, text):
+        if 0 <= index < len(self.buttons):
+            self.buttons[index].configure(text=text)
+
+    def set_button_state(self, index, state):
+        if 0 <= index < len(self.buttons):
+            self.buttons[index].configure(state=state)
+
+    def get_button(self, index):
+        if 0 <= index < len(self.buttons):
+            return self.buttons[index]
+
+        return None

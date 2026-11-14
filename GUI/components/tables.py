@@ -1,19 +1,10 @@
 import customtkinter as ctk
 
-from GUI.styles.colors import (
-    CONTENT,
-    PANEL,
-    PANEL_HOVER,
-    TEXT_DARK,
-    TEXT_MUTED
-)
-
+from GUI.styles.colors import PANEL, TEXT_DARK, TEXT_MUTED
 from GUI.styles.theme import (
     PANEL_RADIUS,
-    TABLE_ROW_HEIGHT,
-    TABLE_CELL_PAD_X,
     FONT_BODY,
-    FONT_SMALL_BOLD
+    FONT_BODY_BOLD,
 )
 
 
@@ -22,346 +13,297 @@ class Tables(ctk.CTkFrame):
         self,
         master,
         columns,
-        empty_text="No data to display",
-        on_double_click=None,
-        on_row_click=None
+        rows=None,
+        headings=None,
+        command=None,
+        **kwargs
     ):
         super().__init__(
             master,
             fg_color=PANEL,
-            corner_radius=PANEL_RADIUS
+            corner_radius=PANEL_RADIUS,
+            **kwargs
         )
 
         self.columns = columns
-        self.empty_text = empty_text
-        self.on_double_click = on_double_click
-        self.on_row_click = on_row_click
-
-        self.rows = []
-        self.selected_row = None
-        self.selected_row_id = None
+        self.rows = rows or []
+        self.headings = headings or columns
+        self.command = command
+        self.cells = []
+        self.header_labels = []
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
+
+        self._build()
+
+    def _build(self):
+        for widget in self.winfo_children():
+            widget.destroy()
+
+        self.cells.clear()
+        self.header_labels.clear()
 
         self._build_header()
         self._build_body()
 
     def _build_header(self):
-        self.header = ctk.CTkFrame(
+        header = ctk.CTkFrame(
             self,
-            fg_color=PANEL_HOVER,
-            corner_radius=10,
-            height=42
+            fg_color="transparent",
+            corner_radius=0
         )
 
-        self.header.grid(
+        header.grid(
             row=0,
             column=0,
             sticky="ew",
-            padx=1,
-            pady=(1, 6)
+            padx=8,
+            pady=(8, 4)
         )
 
-        self.header.grid_propagate(False)
-
-        for index, column in enumerate(self.columns):
-            self.header.grid_columnconfigure(
-                index,
-                weight=column.get("weight", 1),
-                minsize=column.get("minsize", 0)
-            )
-
-            ctk.CTkLabel(
-                self.header,
-                text=column["label"],
-                font=FONT_SMALL_BOLD,
-                text_color=TEXT_DARK,
-                anchor=column.get("anchor", "w")
-            ).grid(
-                row=0,
-                column=index,
-                sticky="ew",
-                padx=TABLE_CELL_PAD_X,
-                pady=8
-            )
-
-    def _build_body(self):
-        self.body_container = ctk.CTkFrame(
-            self,
-            fg_color=PANEL,
-            corner_radius=12
-        )
-
-        self.body_container.grid(
-            row=1,
-            column=0,
-            sticky="nsew",
-            padx=1,
-            pady=(0, 1)
-        )
-
-        self.body_container.grid_columnconfigure(0, weight=1)
-        self.body_container.grid_rowconfigure(0, weight=1)
-
-        self.body = ctk.CTkScrollableFrame(
-            self.body_container,
-            fg_color=CONTENT,
-            corner_radius=10,
-            scrollbar_button_color=PANEL_HOVER,
-            scrollbar_button_hover_color=TEXT_DARK
-        )
-
-        self.body.grid(
-            row=0,
-            column=0,
-            sticky="nsew",
-            padx=4,
-            pady=4
-        )
-
-        self.body.grid_columnconfigure(0, weight=1)
-
-        self.empty_label = ctk.CTkLabel(
-            self.body,
-            text=self.empty_text,
-            font=FONT_BODY,
-            text_color=TEXT_MUTED
-        )
-
-        self.empty_label.pack(pady=55)
-
-    def clear(self):
-        self.clear_selection()
-
-        for row in self.rows:
-            row.destroy()
-
-        self.rows.clear()
-
-        self.empty_label.configure(text=self.empty_text)
-        self.empty_label.pack(pady=55)
-
-    def add_row(
-        self,
-        values,
-        row_id=None,
-        cell_styles=None
-    ):
-        self.empty_label.pack_forget()
-
-        row_index = len(self.rows)
-
-        background = (
-            PANEL
-            if row_index % 2 == 0
-            else CONTENT
-        )
-
-        row = ctk.CTkFrame(
-            self.body,
-            fg_color=background,
-            corner_radius=8,
-            height=TABLE_ROW_HEIGHT + 10
-        )
-
-        row.pack(
-            fill="x",
-            padx=(2, 18),
-            pady=(0, 5)
-        )
-
-        row.pack_propagate(False)
-
-        row.row_id = row_id
-        row.original_background = background
-
-        for index, column in enumerate(self.columns):
-            row.grid_columnconfigure(
-                index,
-                weight=column.get("weight", 1),
-                minsize=column.get("minsize", 0)
-            )
-
-        for index, value in enumerate(values):
-            column = self.columns[index]
-
-            style = (
-                cell_styles.get(index, {})
-                if cell_styles
-                else {}
-            )
+        for column in range(len(self.columns)):
+            header.grid_columnconfigure(column, weight=1)
 
             label = ctk.CTkLabel(
-                row,
-                text=str(value),
-                font=style.get("font", FONT_BODY),
-                text_color=style.get(
-                    "text_color",
-                    TEXT_DARK
-                ),
-                fg_color=style.get(
-                    "fg_color",
-                    "transparent"
-                ),
-                corner_radius=style.get(
-                    "corner_radius",
-                    0
-                ),
-                anchor=column.get(
-                    "anchor",
-                    "w"
-                )
+                header,
+                text=self.headings[column],
+                text_color=TEXT_MUTED,
+                font=FONT_BODY_BOLD,
+                anchor="w"
             )
 
             label.grid(
                 row=0,
-                column=index,
+                column=column,
                 sticky="ew",
-                padx=TABLE_CELL_PAD_X,
-                pady=7
+                padx=8,
+                pady=6
             )
 
-            self._bind_hover(
-                label,
+            self.header_labels.append(label)
+
+    def _build_body(self):
+        body = ctk.CTkScrollableFrame(
+            self,
+            fg_color="transparent",
+            corner_radius=0
+        )
+
+        body.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=8,
+            pady=(0, 8)
+        )
+
+        for column in range(len(self.columns)):
+            body.grid_columnconfigure(column, weight=1)
+
+        if not self.rows:
+            empty = ctk.CTkLabel(
+                body,
+                text="No records found.",
+                text_color=TEXT_MUTED,
+                font=FONT_BODY
+            )
+
+            empty.grid(
+                row=0,
+                column=0,
+                columnspan=len(self.columns),
+                sticky="ew",
+                padx=12,
+                pady=30
+            )
+
+            return
+
+        for row_index, row_data in enumerate(self.rows):
+            self._build_row(
+                body,
+                row_index,
+                row_data
+            )
+
+    def _build_row(self, parent, row_index, row_data):
+        row = ctk.CTkFrame(
+            parent,
+            fg_color="transparent",
+            corner_radius=0
+        )
+
+        row.grid(
+            row=row_index,
+            column=0,
+            columnspan=len(self.columns),
+            sticky="ew",
+            pady=2
+        )
+
+        for column in range(len(self.columns)):
+            row.grid_columnconfigure(column, weight=1)
+
+        row_id = self._get_row_id(row_data)
+
+        row.bind(
+            "<Button-1>",
+            lambda event, value=row_data: self._row_clicked(value)
+        )
+
+        cell_labels = []
+
+        for column, key in enumerate(self.columns):
+            value = self._get_value(row_data, key)
+
+            label = ctk.CTkLabel(
                 row,
-                background
+                text="" if value is None else str(value),
+                text_color=TEXT_DARK,
+                font=FONT_BODY,
+                anchor="w"
+            )
+
+            label.grid(
+                row=0,
+                column=column,
+                sticky="ew",
+                padx=8,
+                pady=8
             )
 
             label.bind(
                 "<Button-1>",
-                lambda event, current_row=row, current_id=row_id:
-                    self._select_row(current_row, current_id),
-                add="+"
+                lambda event, value=row_data: self._row_clicked(value)
             )
 
-            if (
-                self.on_double_click
-                and row_id is not None
-            ):
-                label.bind(
-                    "<Double-1>",
-                    lambda event, value=row_id:
-                        self.on_double_click(value)
-                )
+            cell_labels.append(label)
 
-        row.bind(
-            "<Button-1>",
-            lambda event, current_row=row, current_id=row_id:
-                self._select_row(current_row, current_id),
-            add="+"
-        )
+        self.cells.append({
+            "id": row_id,
+            "data": row_data,
+            "widgets": cell_labels,
+            "row": row,
+        })
 
-        if (
-            self.on_double_click
-            and row_id is not None
-        ):
-            row.bind(
-                "<Double-1>",
-                lambda event, value=row_id:
-                    self.on_double_click(value)
-            )
+    def _get_value(self, row_data, key):
+        if isinstance(row_data, dict):
+            return row_data.get(key, "")
 
-        self.rows.append(row)
+        if isinstance(key, int):
+            try:
+                return row_data[key]
+            except (IndexError, TypeError):
+                return ""
 
-    def _bind_hover(
-        self,
-        label,
-        row,
-        original_background
-    ):
-        def enter(_event):
-            if row is self.selected_row:
-                return
+        try:
+            return getattr(row_data, key)
+        except AttributeError:
+            return ""
 
-            row.configure(
-                fg_color=PANEL_HOVER
-            )
+    def _get_row_id(self, row_data):
+        if isinstance(row_data, dict):
+            return row_data.get("id")
 
-        def leave(_event):
-            if row is self.selected_row:
-                return
+        if hasattr(row_data, "id"):
+            return row_data.id
 
-            row.configure(
-                fg_color=original_background
-            )
+        if isinstance(row_data, (list, tuple)) and row_data:
+            return row_data[0]
 
-        label.bind(
-            "<Enter>",
-            enter,
-            add="+"
-        )
+        return None
 
-        label.bind(
-            "<Leave>",
-            leave,
-            add="+"
-        )
-
-        row.bind(
-            "<Enter>",
-            enter,
-            add="+"
-        )
-
-        row.bind(
-            "<Leave>",
-            leave,
-            add="+"
-        )
-
-    def _select_row(self, row, row_id):
-        if (
-            self.selected_row is not None
-            and self.selected_row.winfo_exists()
-        ):
-            self.selected_row.configure(
-                fg_color=self.selected_row.original_background,
-                border_width=0
-            )
-
-        self.selected_row = row
-        self.selected_row_id = row_id
-
-        row.configure(
-            fg_color=PANEL_HOVER,
-            border_width=2,
-            border_color=TEXT_DARK
-        )
-
-        if self.on_row_click:
-            self.on_row_click(row_id)
-
-    def clear_selection(self):
-        if (
-            self.selected_row is not None
-            and self.selected_row.winfo_exists()
-        ):
-            self.selected_row.configure(
-                fg_color=self.selected_row.original_background,
-                border_width=0
-            )
-
-        self.selected_row = None
-        self.selected_row_id = None
-
-    def get_selected_row_id(self):
-        return self.selected_row_id
+    def _row_clicked(self, row_data):
+        if self.command:
+            self.command(row_data)
 
     def set_rows(self, rows):
-        self.clear()
+        self.rows = rows or []
+        self._build()
 
-        for row in rows:
-            self.add_row(
-                values=row.get("values", []),
-                row_id=row.get("id"),
-                cell_styles=row.get("cell_styles")
+    def add_row(self, row_data):
+        self.rows.append(row_data)
+        self._build()
+
+    def update_row(self, row_id, row_data):
+        for index, existing in enumerate(self.rows):
+            if self._get_row_id(existing) == row_id:
+                self.rows[index] = row_data
+                self._build()
+                return
+
+    def remove_row(self, row_id):
+        self.rows = [
+            row
+            for row in self.rows
+            if self._get_row_id(row) != row_id
+        ]
+
+        self._build()
+
+    def clear(self):
+        self.rows = []
+        self._build()
+
+    def get_rows(self):
+        return list(self.rows)
+
+    def get_row(self, row_id):
+        for row in self.rows:
+            if self._get_row_id(row) == row_id:
+                return row
+
+        return None
+
+    def set_command(self, command):
+        self.command = command
+
+    def set_headings(self, headings):
+        self.headings = headings
+        self._build()
+
+    def refresh(self):
+        self._build()
+
+    def set_loading(self, loading=True, message="Loading..."):
+        for widget in self.winfo_children():
+            widget.destroy()
+
+        if loading:
+            label = ctk.CTkLabel(
+                self,
+                text=message,
+                text_color=TEXT_MUTED,
+                font=FONT_BODY
             )
 
-    def show_empty(self, text=None):
-        self.clear()
+            label.grid(
+                row=0,
+                column=0,
+                sticky="nsew",
+                padx=20,
+                pady=30
+            )
 
-        if text:
-            self.empty_label.configure(text=text)
+        else:
+            self._build()
 
-        self.empty_label.pack(pady=55)
+    def set_empty(self, message="No records found."):
+        for widget in self.winfo_children():
+            widget.destroy()
+
+        label = ctk.CTkLabel(
+            self,
+            text=message,
+            text_color=TEXT_MUTED,
+            font=FONT_BODY
+        )
+
+        label.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=20,
+            pady=30
+        )
