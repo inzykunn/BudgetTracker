@@ -77,3 +77,25 @@ def get_categories():
 
     finally:
         connection.close()
+
+def update_category(category_id, name, category_type):
+    connection = get_connection()
+
+    try:
+        connection.execute(
+            """
+            UPDATE categories
+            SET name = ?, type = ?
+            WHERE id = ?
+            """,
+            (name, category_type, category_id)
+        )
+
+        connection.commit()
+
+    except Exception:
+        connection.rollback()
+        raise
+
+    finally:
+        connection.close()

@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from tkinter import messagebox
+from datetime import date
 
 from services import (
     transaction_service,
@@ -7,28 +7,39 @@ from services import (
     category_service,
 )
 
-from GUI.components.quick_action_buttons import QuickActionButtons
+from GUI.components.buttons import Buttons
+from GUI.components.forms import FormWindow
 from GUI.components.tables import Tables
-from GUI.components.transaction_form import TransactionForm
 
 from GUI.styles.colors import (
     CONTENT,
-    PANEL,
-    PANEL_HOVER,
     TEXT_DARK,
-    SUCCESS,
-    DANGER,
 )
 
 from GUI.styles.theme import (
     CONTENT_PAD_X,
     CONTENT_PAD_Y,
-    PANEL_RADIUS,
-    FONT_SECTION,
+    FONT_PAGE_TITLE,
     FONT_BODY,
     FONT_BODY_BOLD,
-    FONT_SMALL_BOLD,
 )
+
+from GUI.utils.feedback import (
+    show_warning,
+    show_operation_error,
+    show_save_success,
+)
+
+from GUI.utils.validation import (
+    require_text,
+    validate_length,
+)
+
+
+TRANSACTION_TYPES = [
+    "INCOME",
+    "EXPENSE",
+]
 
 
 class TransactionsPage(ctk.CTkFrame):
@@ -53,14 +64,18 @@ class TransactionsPage(ctk.CTkFrame):
             weight=1,
         )
 
+        self._build()
+        self.refresh()
+
+    def _build(self):
         self._build_header()
         self._build_table()
-        self.refresh()
 
     def _build_header(self):
         header = ctk.CTkFrame(
             self,
             fg_color="transparent",
+            corner_radius=0,
         )
 
         header.grid(
@@ -68,7 +83,7 @@ class TransactionsPage(ctk.CTkFrame):
             column=0,
             sticky="ew",
             padx=CONTENT_PAD_X,
-            pady=(CONTENT_PAD_Y, 10),
+            pady=(CONTENT_PAD_Y, 12),
         )
 
         header.grid_columnconfigure(
@@ -79,7 +94,7 @@ class TransactionsPage(ctk.CTkFrame):
         ctk.CTkLabel(
             header,
             text="Transactions",
-            font=FONT_SECTION,
+            font=FONT_PAGE_TITLE,
             text_color=TEXT_DARK,
         ).grid(
             row=0,
@@ -87,85 +102,84 @@ class TransactionsPage(ctk.CTkFrame):
             sticky="w",
         )
 
-        actions = QuickActionButtons(
+        self.header_buttons = Buttons(
             header,
-            [
-                (
-                    "Add Income",
-                    lambda: self._open_form("INCOME"),
-                ),
-                (
-                    "Add Expense",
-                    lambda: self._open_form("EXPENSE"),
-                ),
-                (
-                    "Refresh",
-                    self.refresh,
-                ),
+            actions=[
+                {
+                    "label": "Add Income",
+                    "command": lambda: self._open_form("INCOME"),
+                    "style": "success",
+                    "width": 120,
+                    "height": 40,
+                },
+                {
+                    "label": "Add Expense",
+                    "command": lambda: self._open_form("EXPENSE"),
+                    "style": "danger",
+                    "width": 125,
+                    "height": 40,
+                },
+                {
+                    "label": "Refresh",
+                    "command": self.refresh,
+                    "style": "default",
+                    "width": 90,
+                    "height": 40,
+                },
             ],
             columns=3,
+            padx=3,
+            pady=0,
         )
 
-        actions.grid(
+        self.header_buttons.grid(
             row=0,
             column=1,
             sticky="e",
         )
 
     def _build_table(self):
-        panel = ctk.CTkFrame(
-            self,
-            fg_color=PANEL,
-            corner_radius=PANEL_RADIUS,
-        )
-
-        panel.grid(
-            row=1,
-            column=0,
-            sticky="nsew",
-            padx=CONTENT_PAD_X,
-            pady=(0, CONTENT_PAD_Y),
-        )
-
-        panel.grid_columnconfigure(
-            0,
-            weight=1,
-        )
-
-        panel.grid_rowconfigure(
-            0,
-            weight=1,
-        )
-
         self.table = Tables(
-            panel,
+            self,
             columns=[
                 {
+                    "key": "id",
+                    "label": "ID",
+                    "weight": 1,
+                    "minsize": 60,
+                },
+                {
+                    "key": "date",
                     "label": "DATE",
                     "weight": 1,
                     "minsize": 105,
                 },
                 {
+                    "key": "description",
                     "label": "DESCRIPTION",
                     "weight": 3,
                     "minsize": 180,
                 },
                 {
+                    "key": "type",
                     "label": "TYPE",
                     "weight": 1,
                     "minsize": 110,
                 },
                 {
+                    "key": "category",
                     "label": "CATEGORY",
                     "weight": 2,
                     "minsize": 130,
                 },
                 {
+                    "key": "account",
                     "label": "ACCOUNT",
                     "weight": 2,
                     "minsize": 150,
                 },
                 {
+                    "key": "amount",
                     "label": "AMOUNT",
                     "weight": 1,
                     "minsize": 120,
@@ -173,15 +187,15 @@ class TransactionsPage(ctk.CTkFrame):
                 },
             ],
             empty_text="No transactions yet",
-            on_double_click=self._show_transaction,
+            command=self._show_transaction,
         )
 
         self.table.grid(
-            row=0,
+            row=1,
             column=0,
             sticky="nsew",
-            padx=18,
-            pady=18,
+            padx=CONTENT_PAD_X,
+            pady=(0, CONTENT_PAD_Y),
         )
 
     def _open_form(self, transaction_type):
@@ -207,130 +221,74 @@ class TransactionsPage(ctk.CTkFrame):
                 for row in categories
             }
 
-        except Exception as exc:
-            messagebox.showerror(
-                "Load Error",
-                f"Unable to load transactions.\n\n{exc}",
-                parent=self,
-            )
-            return
+            rows = []
 
-        self.table.clear()
-
-        for transaction in transactions:
-            (
-                transaction_id,
-                transaction_date,
-                description,
-                transaction_type,
-                category_id,
-                _,
-            ) = transaction
-
-            try:
-                _, entries = transaction_service.get_transaction_by_id(
-                    transaction_id
-                )
-            except Exception:
-                entries = []
-
-            amount = self._display_amount(
-                transaction_type,
-                entries,
-            )
-
-            account = self._display_account(entries)
-
-            category = self.category_names.get(
-                category_id,
-                "",
-            )
-
-            cell_styles = {
-                2: {
-                    "font": FONT_BODY_BOLD,
-                    "text_color": self._type_color(
-                        transaction_type
-                    ),
-                },
-                5: {
-                    "font": FONT_BODY_BOLD,
-                    "text_color": self._amount_color(
-                        transaction_type
-                    ),
-                },
-            }
-
-            self.table.add_row(
-                values=(
+            for transaction in transactions:
+                (
+                    transaction_id,
                     transaction_date,
                     description,
-                    transaction_type.replace(
-                        "_",
-                        " ",
-                    ),
-                    category,
-                    account,
-                    amount,
-                ),
-                row_id=transaction_id,
-                cell_styles=cell_styles,
+                    transaction_type,
+                    category_id,
+                    _,
+                ) = transaction
+
+                try:
+                    _, entries = transaction_service.get_transaction_by_id(
+                        transaction_id
+                    )
+                except Exception:
+                    entries = []
+
+                rows.append(
+                    {
+                        "id": transaction_id,
+                        "date": transaction_date,
+                        "description": description,
+                        "type": transaction_type.replace(
+                            "_",
+                            " ",
+                        ),
+                        "category": self.category_names.get(
+                            category_id,
+                            "",
+                        ),
+                        "account": self._display_account(
+                            entries
+                        ),
+                        "amount": self._display_amount(
+                            transaction_type,
+                            entries,
+                        ),
+                    }
+                )
+
+            self.table.set_rows(rows)
+
+        except Exception as exc:
+            show_operation_error(
+                self,
+                "Load Transactions",
+                exc,
             )
 
-    @staticmethod
-    def _type_color(transaction_type):
-        if transaction_type == "INCOME":
-            return SUCCESS
-
-        if transaction_type in {
-            "EXPENSE",
-            "RECEIVABLE",
-            "LIABILITY_PAYMENT",
-        }:
-            return DANGER
-
-        return TEXT_DARK
-
-    @staticmethod
-    def _amount_color(transaction_type):
-        if transaction_type == "INCOME":
-            return SUCCESS
-
-        if transaction_type in {
-            "EXPENSE",
-            "RECEIVABLE",
-            "LIABILITY_PAYMENT",
-        }:
-            return DANGER
-
-        return TEXT_DARK
-
-    @staticmethod
     def _display_amount(
+        self,
         transaction_type,
         entries,
     ):
         if not entries:
             return "₱0.00"
 
-        if transaction_type == "TRANSFER":
-            amount = max(
-                abs(entry[2])
-                for entry in entries
-            )
-
-            return f"₱{amount / 100:,.2f}"
-
         amount = abs(entries[0][2])
 
-        if transaction_type in {
-            "EXPENSE",
-            "RECEIVABLE",
-            "LIABILITY_PAYMENT",
-        }:
+        if transaction_type == "INCOME":
+            return f"+ ₱{amount / 100:,.2f}"
+
+        if transaction_type == "EXPENSE":
             return f"- ₱{amount / 100:,.2f}"
 
-        return f"+ ₱{amount / 100:,.2f}"
+        return f"₱{amount / 100:,.2f}"
 
     def _display_account(self, entries):
         if not entries:
@@ -349,36 +307,412 @@ class TransactionsPage(ctk.CTkFrame):
 
         return names[0]
 
-    def _show_transaction(self, transaction_id):
+    def _show_transaction(self, row_data):
+        transaction_id = row_data.get("id")
+
+        if transaction_id is None:
+            return
+
         try:
-            transaction, entries = transaction_service.get_transaction_by_id(
-                transaction_id
+            transaction, entries = (
+                transaction_service.get_transaction_by_id(
+                    transaction_id
+                )
             )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Transaction Error",
-                f"Unable to load the transaction.\n\n{exc}",
-                parent=self,
+            show_operation_error(
+                self,
+                "Load Transaction",
+                exc,
             )
             return
 
         if not transaction:
+            show_warning(
+                self,
+                "Transaction Not Found",
+                "The selected transaction no longer exists.",
+            )
+
+            self.refresh()
             return
 
-        transaction_type = transaction[3]
-
-        details = (
-            f"Date: {transaction[1]}\n"
-            f"Description: {transaction[2]}\n"
-            f"Type: {transaction_type.replace('_', ' ')}\n"
-            f"Category: {self.category_names.get(transaction[4], 'None')}\n"
-            f"Account: {self._display_account(entries)}\n"
-            f"Amount: {self._display_amount(transaction_type, entries)}"
+        TransactionDetailsForm(
+            self,
+            transaction,
+            entries,
+            self.account_names,
+            self.category_names,
         )
 
-        messagebox.showinfo(
+
+class TransactionForm(FormWindow):
+    def __init__(
+        self,
+        master,
+        transaction_type,
+        on_saved=None,
+    ):
+        self.transaction_type = transaction_type
+        self.on_saved = on_saved
+        self.accounts = []
+        self.categories = []
+
+        super().__init__(
+            master,
+            (
+                "Add Income"
+                if transaction_type == "INCOME"
+                else "Add Expense"
+            ),
+            width=560,
+            height=620,
+        )
+
+        self._load_data()
+        self._build()
+
+    def _load_data(self):
+        try:
+            self.accounts = [
+                row
+                for row in account_service.get_accounts()
+                if row[3]
+            ]
+
+            self.categories = [
+                row
+                for row in category_service.get_categories()
+                if row[2] == self.transaction_type
+            ]
+
+        except Exception as exc:
+            show_operation_error(
+                self,
+                "Load Transaction Form",
+                exc,
+            )
+
+    def _build(self):
+        self.add_description(
+            "Enter the transaction details below."
+        )
+
+        self.date_entry = self.add_date_field(
+            "Date",
+            value=date.today().strftime("%m/%d/%Y"),
+            placeholder_text="MM/DD/YYYY",
+        )
+
+        self.description_entry = self.add_field(
+            "Description",
+            placeholder_text="Enter description",
+        )
+
+        self.account_selector = self.add_selector(
+            "Account",
+            [
+                f"{row[0]} - {row[1]}"
+                for row in self.accounts
+            ],
+        )
+
+        self.category_selector = self.add_selector(
+            "Category",
+            [
+                f"{row[0]} - {row[1]}"
+                for row in self.categories
+            ],
+        )
+
+        self.amount_entry = self.add_currency_field(
+            "Amount",
+            placeholder_text="0.00",
+        )
+
+        self.add_buttons(
+            save_text=(
+                "Save Income"
+                if self.transaction_type == "INCOME"
+                else "Save Expense"
+            ),
+            save_command=self._save,
+        )
+
+    def _validate(self):
+        try:
+            transaction_date = self.get_date_value(
+                self.date_entry
+            )
+
+            description = validate_length(
+                require_text(
+                    self.description_entry.get(),
+                    "Transaction description",
+                ),
+                "Transaction description",
+                min_length=1,
+                max_length=255,
+            )
+
+            account_id = self._get_selected_id(
+                self.account_selector
+            )
+
+            if account_id is None:
+                raise ValueError(
+                    "Please select an account."
+                )
+
+            category_id = self._get_selected_id(
+                self.category_selector
+            )
+
+            if category_id is None:
+                raise ValueError(
+                    "Please select a category."
+                )
+
+            amount = self.get_currency_value(
+                self.amount_entry
+            )
+
+            if amount <= 0:
+                raise ValueError(
+                    "Transaction amount must be greater than zero."
+                )
+
+            return (
+                transaction_date,
+                description,
+                account_id,
+                category_id,
+                amount,
+            )
+
+        except ValueError as exc:
+            show_warning(
+                self,
+                "Validation Error",
+                str(exc),
+            )
+
+            return None
+
+    @staticmethod
+    def _get_selected_id(selector):
+        value = selector.get()
+
+        if not value:
+            return None
+
+        if value == "No options available":
+            return None
+
+        try:
+            return int(
+                value.split(
+                    " - ",
+                    1,
+                )[0]
+            )
+
+        except (
+            ValueError,
+            IndexError,
+        ):
+            return None
+
+    def _save(self):
+        values = self._validate()
+
+        if values is None:
+            return
+
+        (
+            transaction_date,
+            description,
+            account_id,
+            category_id,
+            amount,
+        ) = values
+
+        try:
+            transaction_date = transaction_date.isoformat()
+
+            if self.transaction_type == "EXPENSE":
+                amount = -amount
+
+            transaction_service.create_transaction(
+                transaction_date,
+                description,
+                self.transaction_type,
+                category_id,
+                [
+                    (
+                        account_id,
+                        amount,
+                    )
+                ],
+            )
+
+        except Exception as exc:
+            show_operation_error(
+                self,
+                "Save Transaction",
+                exc,
+            )
+            return
+
+        show_save_success(
+            self,
+            (
+                "Income"
+                if self.transaction_type == "INCOME"
+                else "Expense"
+            ),
+        )
+
+        if self.on_saved:
+            self.on_saved()
+
+        self.destroy()
+
+
+class TransactionDetailsForm(FormWindow):
+    def __init__(
+        self,
+        master,
+        transaction,
+        entries,
+        account_names,
+        category_names,
+    ):
+        self.transaction = transaction
+        self.entries = entries
+        self.account_names = account_names
+        self.category_names = category_names
+
+        super().__init__(
+            master,
             "Transaction Details",
-            details,
-            parent=self,
+            width=560,
+            height=560,
         )
+
+        self._build()
+
+    def _build(self):
+        transaction_type = self.transaction[3]
+
+        self.add_description(
+            "Transaction information."
+        )
+
+        self._add_detail(
+            "Date",
+            self.transaction[1],
+        )
+
+        self._add_detail(
+            "Description",
+            self.transaction[2],
+        )
+
+        self._add_detail(
+            "Type",
+            transaction_type.replace(
+                "_",
+                " ",
+            ),
+        )
+
+        self._add_detail(
+            "Category",
+            self.category_names.get(
+                self.transaction[4],
+                "None",
+            ),
+        )
+
+        self._add_detail(
+            "Account",
+            self._display_account(),
+        )
+
+        self._add_detail(
+            "Amount",
+            self._display_amount(
+                transaction_type
+            ),
+        )
+
+        self.add_buttons(
+            save_text="Close",
+            save_command=self.destroy,
+        )
+
+    def _add_detail(self, label, value):
+        wrapper = ctk.CTkFrame(
+            self.body,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+
+        wrapper.pack(
+            fill="x",
+            pady=(0, 12),
+        )
+
+        ctk.CTkLabel(
+            wrapper,
+            text=label,
+            font=FONT_BODY_BOLD,
+            text_color=TEXT_DARK,
+        ).pack(
+            anchor="w",
+        )
+
+        ctk.CTkLabel(
+            wrapper,
+            text=str(value),
+            font=FONT_BODY,
+            text_color=TEXT_DARK,
+        ).pack(
+            anchor="w",
+            pady=(2, 0),
+        )
+
+    def _display_account(self):
+        if not self.entries:
+            return ""
+
+        names = [
+            self.account_names.get(
+                entry[1],
+                f"Account {entry[1]}",
+            )
+            for entry in self.entries
+        ]
+
+        if len(names) > 1:
+            return " → ".join(names)
+
+        return names[0]
+
+    def _display_amount(self, transaction_type):
+        if not self.entries:
+            return "₱0.00"
+
+        amount = abs(
+            self.entries[0][2]
+        )
+
+        if transaction_type == "INCOME":
+            return f"+ ₱{amount / 100:,.2f}"
+
+        if transaction_type == "EXPENSE":
+            return f"- ₱{amount / 100:,.2f}"
+
+        return f"₱{amount / 100:,.2f}"

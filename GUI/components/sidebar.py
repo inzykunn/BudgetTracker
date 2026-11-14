@@ -1,19 +1,25 @@
 import customtkinter as ctk
 
-from GUI.styles.colors import SIDEBAR, SIDEBAR_HOVER, TEXT_LIGHT, TEXT_MUTED
+from GUI.styles.colors import (
+    SIDEBAR,
+    PANEL_HOVER,
+    TEXT_LIGHT,
+    TEXT_MUTED,
+)
+
 from GUI.styles.theme import (
     SIDEBAR_WIDTH,
-    SIDEBAR_PAD_X,
-    SIDEBAR_PAD_Y,
+    SIDEBAR_BUTTON_HEIGHT,
+    SIDEBAR_BUTTON_PAD_X,
+    SIDEBAR_BUTTON_PAD_Y,
     BUTTON_RADIUS,
-    BUTTON_HEIGHT,
     FONT_BODY,
     FONT_BODY_BOLD,
 )
 
 
 class Sidebar(ctk.CTkFrame):
-    def __init__(self, master, items, command=None):
+    def __init__(self, master, command=None, items=None):
         super().__init__(
             master,
             width=SIDEBAR_WIDTH,
@@ -23,8 +29,8 @@ class Sidebar(ctk.CTkFrame):
 
         self.grid_propagate(False)
 
-        self.items = items
         self.command = command
+        self.items = items or []
         self.buttons = {}
         self.active_item = None
 
@@ -37,17 +43,22 @@ class Sidebar(ctk.CTkFrame):
         self.buttons.clear()
 
         for item in self.items:
-            key = item.get("key", item.get("label"))
-            label = item.get("label", key)
-            callback = item.get("command")
+            if isinstance(item, dict):
+                key = item.get("key", item.get("label"))
+                label = item.get("label", key)
+                callback = item.get("command")
+            else:
+                key = item
+                label = item
+                callback = None
 
             if callback is None:
                 callback = self.command
 
             self._create_button(
-                key=key,
-                label=label,
-                command=callback,
+                key,
+                label,
+                callback,
             )
 
     def _create_button(self, key, label, command):
@@ -55,10 +66,10 @@ class Sidebar(ctk.CTkFrame):
             self,
             text=label,
             command=lambda k=key, c=command: self._handle_click(k, c),
-            height=BUTTON_HEIGHT,
+            height=SIDEBAR_BUTTON_HEIGHT,
             corner_radius=BUTTON_RADIUS,
             fg_color="transparent",
-            hover_color=SIDEBAR_HOVER,
+            hover_color=PANEL_HOVER,
             text_color=TEXT_LIGHT,
             font=FONT_BODY,
             anchor="w",
@@ -66,8 +77,8 @@ class Sidebar(ctk.CTkFrame):
 
         button.pack(
             fill="x",
-            padx=SIDEBAR_PAD_X,
-            pady=SIDEBAR_PAD_Y,
+            padx=SIDEBAR_BUTTON_PAD_X,
+            pady=SIDEBAR_BUTTON_PAD_Y,
         )
 
         self.buttons[key] = button
@@ -87,13 +98,13 @@ class Sidebar(ctk.CTkFrame):
 
         if key in self.buttons:
             self.buttons[key].configure(
-                fg_color=SIDEBAR_HOVER,
+                fg_color=PANEL_HOVER,
                 font=FONT_BODY_BOLD,
             )
             self.active_item = key
 
     def set_items(self, items):
-        self.items = items
+        self.items = items or []
         self.active_item = None
         self._build()
 
@@ -103,7 +114,6 @@ class Sidebar(ctk.CTkFrame):
             "label": label,
             "command": command,
         })
-
         self._build()
 
     def remove_item(self, key):

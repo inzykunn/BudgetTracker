@@ -146,3 +146,23 @@ def deactivate_account(account_id):
         raise
     finally:
         connection.close()
+
+def activate_account(account_id):
+    connection = get_connection()
+
+    try:
+        connection.execute(
+            """
+            UPDATE accounts
+            SET is_active = 1
+            WHERE id = ?
+            """,
+            (account_id,)
+        )
+
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
