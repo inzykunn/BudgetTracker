@@ -1,4 +1,5 @@
 from datetime import date
+import calendar
 from tkinter import messagebox
 import customtkinter as ctk
 
@@ -14,6 +15,7 @@ from GUI.styles.colors import (
     DANGER,
     INPUT_BG,
     INPUT_BORDER,
+    TEXT_MUTED,
 )
 from GUI.styles.theme import (
     CONTENT_PAD_X,
@@ -26,7 +28,372 @@ from GUI.styles.theme import (
     FONT_BODY_BOLD,
     FONT_FORM_LABEL,
     FONT_FORM_INPUT,
+    FONT_SMALL_BOLD,
 )
+
+
+class DatePicker(ctk.CTkToplevel):
+    def __init__(self, master, entry):
+        super().__init__(master)
+        self.entry = entry
+        self.current = self._read_date()
+
+        self.title("Select Date")
+        self.geometry("390x350")
+        self.resizable(False, False)
+        self.configure(fg_color=PANEL)
+        self.transient(master)
+        self.grab_set()
+
+        self._build()
+
+    def _read_date(self):
+        try:
+            return date.fromisoformat(self.entry.get().strip())
+        except ValueError:
+            return date.today()
+
+    def _build(self):
+        for widget in self.winfo_children():
+            widget.destroy()
+
+        header = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+        )
+        header.pack(
+            fill="x",
+            padx=12,
+            pady=(12, 8),
+        )
+
+        header.grid_columnconfigure(1, weight=1)
+        header.grid_columnconfigure(2, weight=1)
+
+        ctk.CTkButton(
+            header,
+            text="‹",
+            width=38,
+            height=32,
+            corner_radius=8,
+            fg_color=PANEL_HOVER,
+            hover_color=CONTENT,
+            text_color=TEXT_DARK,
+            command=self._previous_month,
+        ).grid(
+            row=0,
+            column=0,
+            padx=(0, 6),
+        )
+
+        month_values = [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ]
+
+        self.month_combo = ctk.CTkComboBox(
+            header,
+            values=month_values,
+            width=125,
+            height=32,
+            corner_radius=8,
+            fg_color=INPUT_BG,
+            border_color=INPUT_BORDER,
+            button_color=PANEL_HOVER,
+            button_hover_color=CONTENT,
+            dropdown_fg_color=INPUT_BG,
+            dropdown_hover_color=PANEL_HOVER,
+            text_color=TEXT_DARK,
+            font=FONT_BODY_BOLD,
+            command=self._set_month,
+        )
+        self.month_combo.set(
+            month_values[self.current.month - 1]
+        )
+        self.month_combo.grid(
+            row=0,
+            column=1,
+            padx=3,
+        )
+
+        year_frame = ctk.CTkFrame(
+            header,
+            fg_color="transparent",
+        )
+        year_frame.grid(
+            row=0,
+            column=2,
+            padx=3,
+        )
+
+        self.year_entry = ctk.CTkEntry(
+            year_frame,
+            width=70,
+            height=32,
+            corner_radius=8,
+            fg_color=INPUT_BG,
+            border_color=INPUT_BORDER,
+            text_color=TEXT_DARK,
+            font=FONT_BODY_BOLD,
+            justify="center",
+        )
+        self.year_entry.insert(0, str(self.current.year))
+        self.year_entry.grid(
+            row=0,
+            column=0,
+        )
+
+        ctk.CTkButton(
+            year_frame,
+            text="✓",
+            width=32,
+            height=32,
+            corner_radius=8,
+            fg_color=PANEL_HOVER,
+            hover_color=CONTENT,
+            text_color=TEXT_DARK,
+            command=self._set_year,
+        ).grid(
+            row=0,
+            column=1,
+            padx=(3, 0),
+        )
+
+        ctk.CTkButton(
+            header,
+            text="›",
+            width=38,
+            height=32,
+            corner_radius=8,
+            fg_color=PANEL_HOVER,
+            hover_color=CONTENT,
+            text_color=TEXT_DARK,
+            command=self._next_month,
+        ).grid(
+            row=0,
+            column=3,
+            padx=(6, 0),
+        )
+
+        weekdays = [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri",
+            "Sat",
+            "Sun",
+        ]
+
+        week_frame = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+        )
+        week_frame.pack(
+            fill="x",
+            padx=12,
+            pady=(0, 3),
+        )
+
+        for index, name in enumerate(weekdays):
+            week_frame.grid_columnconfigure(
+                index,
+                weight=1,
+            )
+
+            ctk.CTkLabel(
+                week_frame,
+                text=name,
+                font=FONT_SMALL_BOLD,
+                text_color=(
+                    TEXT_MUTED
+                    if name in ("Sat", "Sun")
+                    else TEXT_DARK
+                ),
+            ).grid(
+                row=0,
+                column=index,
+                sticky="ew",
+                padx=1,
+                pady=2,
+            )
+
+        days_frame = ctk.CTkFrame(
+            self,
+            fg_color="transparent",
+        )
+        days_frame.pack(
+            fill="both",
+            expand=True,
+            padx=12,
+            pady=(0, 8),
+        )
+
+        month_weeks = calendar.monthcalendar(
+            self.current.year,
+            self.current.month,
+        )
+
+        for row_index, week in enumerate(month_weeks):
+            days_frame.grid_rowconfigure(
+                row_index,
+                weight=1,
+            )
+
+            for col_index, day_number in enumerate(week):
+                days_frame.grid_columnconfigure(
+                    col_index,
+                    weight=1,
+                )
+
+                if day_number == 0:
+                    ctk.CTkLabel(
+                        days_frame,
+                        text="",
+                    ).grid(
+                        row=row_index,
+                        column=col_index,
+                        sticky="nsew",
+                        padx=1,
+                        pady=1,
+                    )
+                    continue
+
+                day_date = date(
+                    self.current.year,
+                    self.current.month,
+                    day_number,
+                )
+
+                selected_date = self._read_date()
+                is_selected = day_date == selected_date
+
+                ctk.CTkButton(
+                    days_frame,
+                    text=str(day_number),
+                    width=36,
+                    height=30,
+                    corner_radius=7,
+                    fg_color=(
+                        TEXT_DARK
+                        if is_selected
+                        else PANEL_HOVER
+                    ),
+                    hover_color=PANEL_HOVER,
+                    text_color=(
+                        TEXT_LIGHT
+                        if is_selected
+                        else TEXT_DARK
+                    ),
+                    font=FONT_BODY,
+                    command=lambda selected=day_date: self._select(
+                        selected
+                    ),
+                ).grid(
+                    row=row_index,
+                    column=col_index,
+                    sticky="nsew",
+                    padx=1,
+                    pady=1,
+                )
+
+    def _set_month(self, value):
+        month = [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ].index(value) + 1
+
+        self.current = date(
+            self.current.year,
+            month,
+            1,
+        )
+
+        self._build()
+
+    def _set_year(self):
+        try:
+            year = int(self.year_entry.get().strip())
+        except ValueError:
+            messagebox.showwarning(
+                "Invalid Year",
+                "Enter a valid year from 2010 to 2026.",
+                parent=self,
+            )
+            return
+
+        if year < 2010 or year > 2026:
+            messagebox.showwarning(
+                "Invalid Year",
+                "Enter a year from 2010 to 2026.",
+                parent=self,
+            )
+            return
+
+        self.current = date(
+            year,
+            self.current.month,
+            1,
+        )
+
+        self._build()
+
+    def _previous_month(self):
+        year = self.current.year
+        month = self.current.month - 1
+
+        if month == 0:
+            year -= 1
+            month = 12
+
+        self.current = date(
+            year,
+            month,
+            1,
+        )
+
+        self._build()
+
+    def _next_month(self):
+        year = self.current.year
+        month = self.current.month + 1
+
+        if month == 13:
+            year += 1
+            month = 1
+
+        self.current = date(
+            year,
+            month,
+            1,
+        )
+
+        self._build()
+
+    def _select(self, selected):
+        self.entry.delete(0, "end")
+        self.entry.insert(0, selected.isoformat())
+        self.destroy()
 
 
 class AssetsPage(ctk.CTkFrame):
@@ -36,7 +403,6 @@ class AssetsPage(ctk.CTkFrame):
         self.navigate = navigate
         self.accounts = []
         self.account_map = {}
-        self.selected_asset_id = None
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -82,17 +448,12 @@ class AssetsPage(ctk.CTkFrame):
 
         buttons = [
             ("Add Asset", self._open_add_form),
-            ("Update Value", self._open_value_form),
-            ("Sell Asset", self._open_sell_form),
             ("Edit Asset", self._open_edit_form),
-            ("Dispose", self._dispose_asset),
+            ("Sell Asset", self._open_sell_form),
             ("Refresh", self.refresh),
         ]
 
         for index, (text, command) in enumerate(buttons):
-            row = index // 3
-            column = index % 3
-
             ctk.CTkButton(
                 actions,
                 text=text,
@@ -105,8 +466,8 @@ class AssetsPage(ctk.CTkFrame):
                 font=FONT_BODY_BOLD,
                 command=command,
             ).grid(
-                row=row,
-                column=column,
+                row=0,
+                column=index,
                 padx=4,
                 pady=2,
             )
@@ -306,17 +667,19 @@ class AssetsPage(ctk.CTkFrame):
         )
 
     def _selected_asset(self):
-        if self.selected_asset_id is None:
+        asset_id = self.table.get_selected_row_id()
+
+        if asset_id is None:
             messagebox.showinfo(
                 "Select Asset",
-                "Double-click an asset row first, then use the action buttons to manage it.",
+                "Please select an asset first.",
                 parent=self,
             )
             return None
 
         try:
             return asset_service.get_asset_by_id(
-                self.selected_asset_id
+                asset_id
             )
 
         except Exception as exc:
@@ -360,12 +723,9 @@ class AssetsPage(ctk.CTkFrame):
             )
             return
 
-        self.selected_asset_id = None
         self.refresh()
 
     def _show_asset(self, asset_id):
-        self.selected_asset_id = asset_id
-
         try:
             asset = asset_service.get_asset_by_id(asset_id)
             history = asset_service.get_asset_valuation_history(asset_id)
@@ -449,7 +809,7 @@ class AssetForm(ctk.CTkToplevel):
             if mode == "add"
             else "Edit Asset"
         )
-        self.geometry("580x800")
+        self.geometry("580x950")
         self.resizable(False, False)
         self.configure(fg_color=CONTENT)
         self.transient(master)
@@ -524,7 +884,7 @@ class AssetForm(ctk.CTkToplevel):
             ) if self.asset else "",
         )
 
-        self.acquired_entry = self._field(
+        self.acquired_entry = self._date_field(
             panel,
             "Acquired Date",
             (
@@ -535,7 +895,7 @@ class AssetForm(ctk.CTkToplevel):
         )
 
         if self.mode == "add":
-            self.transaction_date_entry = self._field(
+            self.transaction_date_entry = self._date_field(
                 panel,
                 "Purchase Transaction Date",
                 date.today().isoformat(),
@@ -651,6 +1011,46 @@ class AssetForm(ctk.CTkToplevel):
             padx=(6, 0),
         )
 
+    def _open_value_form(self):
+        AssetValueForm(
+            self.master_page,
+            self.asset,
+            on_saved=self.on_saved,
+        )
+
+    def _dispose_asset(self):
+        if self.asset[6] in ("DISPOSED", "SOLD"):
+            messagebox.showwarning(
+                "Unavailable",
+                "This asset has already been disposed or sold.",
+                parent=self,
+            )
+            return
+
+        if not messagebox.askyesno(
+            "Dispose Asset",
+            f'Dispose "{self.asset[1]}"?\n\n'
+            "This will mark the asset as DISPOSED.",
+            parent=self,
+        ):
+            return
+
+        try:
+            asset_service.dispose_asset(self.asset[0])
+
+        except Exception as exc:
+            messagebox.showerror(
+                "Dispose Error",
+                f"Unable to dispose the asset.\n\n{exc}",
+                parent=self,
+            )
+            return
+
+        if self.on_saved:
+            self.on_saved()
+
+        self.destroy()
+
     def _field(self, parent, label, value):
         wrapper = ctk.CTkFrame(
             parent,
@@ -690,6 +1090,69 @@ class AssetForm(ctk.CTkToplevel):
                 0,
                 str(value),
             )
+
+        return entry
+
+    def _date_field(self, parent, label, value):
+        wrapper = ctk.CTkFrame(
+            parent,
+            fg_color="transparent",
+        )
+
+        wrapper.pack(
+            fill="x",
+            padx=28,
+            pady=(0, 12),
+        )
+
+        ctk.CTkLabel(
+            wrapper,
+            text=label,
+            font=FONT_FORM_LABEL,
+            text_color=TEXT_DARK,
+        ).pack(
+            anchor="w",
+            pady=(0, 5),
+        )
+
+        date_row = ctk.CTkFrame(
+            wrapper,
+            fg_color="transparent",
+        )
+        date_row.pack(fill="x")
+
+        date_row.grid_columnconfigure(0, weight=1)
+
+        entry = ctk.CTkEntry(
+            date_row,
+            height=36,
+            corner_radius=INPUT_RADIUS,
+            fg_color=INPUT_BG,
+            border_color=INPUT_BORDER,
+            text_color=TEXT_DARK,
+            font=FONT_FORM_INPUT,
+        )
+        entry.grid(row=0, column=0, sticky="ew")
+
+        if value:
+            entry.insert(0, str(value))
+
+        ctk.CTkButton(
+            date_row,
+            text="Calendar",
+            width=96,
+            height=36,
+            corner_radius=INPUT_RADIUS,
+            fg_color=PANEL_HOVER,
+            hover_color=CONTENT,
+            text_color=TEXT_DARK,
+            font=FONT_FORM_INPUT,
+            command=lambda: DatePicker(self, entry),
+        ).grid(
+            row=0,
+            column=1,
+            padx=(8, 0),
+        )
 
         return entry
 
@@ -1156,7 +1619,7 @@ class SellAssetForm(ctk.CTkToplevel):
         self.on_saved = on_saved
 
         self.title("Sell Asset")
-        self.geometry("560x500")
+        self.geometry("560x650")
         self.resizable(False, False)
         self.configure(fg_color=CONTENT)
         self.transient(master)
@@ -1203,7 +1666,7 @@ class SellAssetForm(ctk.CTkToplevel):
             pady=(0, 18),
         )
 
-        self.date_entry = self._field(
+        self.date_entry = self._date_field(
             panel,
             "Sale Date",
             date.today().isoformat(),
@@ -1325,6 +1788,69 @@ class SellAssetForm(ctk.CTkToplevel):
                 0,
                 str(value),
             )
+
+        return entry
+
+    def _date_field(self, parent, label, value):
+        wrapper = ctk.CTkFrame(
+            parent,
+            fg_color="transparent",
+        )
+
+        wrapper.pack(
+            fill="x",
+            padx=28,
+            pady=(0, 12),
+        )
+
+        ctk.CTkLabel(
+            wrapper,
+            text=label,
+            font=FONT_FORM_LABEL,
+            text_color=TEXT_DARK,
+        ).pack(
+            anchor="w",
+            pady=(0, 5),
+        )
+
+        date_row = ctk.CTkFrame(
+            wrapper,
+            fg_color="transparent",
+        )
+        date_row.pack(fill="x")
+
+        date_row.grid_columnconfigure(0, weight=1)
+
+        entry = ctk.CTkEntry(
+            date_row,
+            height=36,
+            corner_radius=INPUT_RADIUS,
+            fg_color=INPUT_BG,
+            border_color=INPUT_BORDER,
+            text_color=TEXT_DARK,
+            font=FONT_FORM_INPUT,
+        )
+        entry.grid(row=0, column=0, sticky="ew")
+
+        if value:
+            entry.insert(0, str(value))
+
+        ctk.CTkButton(
+            date_row,
+            text="Calendar",
+            width=96,
+            height=36,
+            corner_radius=INPUT_RADIUS,
+            fg_color=PANEL_HOVER,
+            hover_color=CONTENT,
+            text_color=TEXT_DARK,
+            font=FONT_FORM_INPUT,
+            command=lambda: DatePicker(self, entry),
+        ).grid(
+            row=0,
+            column=1,
+            padx=(8, 0),
+        )
 
         return entry
 

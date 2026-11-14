@@ -417,7 +417,7 @@ class InventoryForm(ctk.CTkToplevel):
             else "Edit Inventory Item"
         )
 
-        self.geometry("560x700")
+        self.geometry("600x800")
         self.resizable(False, False)
         self.configure(fg_color=CONTENT)
 

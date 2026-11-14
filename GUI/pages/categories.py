@@ -1,6 +1,5 @@
 import customtkinter as ctk
 from tkinter import messagebox
-from functools import partial
 
 from services import category_service
 from GUI.components.tables import Tables
@@ -51,6 +50,7 @@ class CategoriesPage(ctk.CTkFrame):
             self,
             fg_color="transparent"
         )
+
         header.grid(
             row=0,
             column=0,
@@ -58,6 +58,7 @@ class CategoriesPage(ctk.CTkFrame):
             padx=CONTENT_PAD_X,
             pady=(CONTENT_PAD_Y, 10)
         )
+
         header.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
@@ -71,8 +72,19 @@ class CategoriesPage(ctk.CTkFrame):
             sticky="w"
         )
 
-        ctk.CTkButton(
+        button_frame = ctk.CTkFrame(
             header,
+            fg_color="transparent"
+        )
+
+        button_frame.grid(
+            row=0,
+            column=1,
+            sticky="e"
+        )
+
+        ctk.CTkButton(
+            button_frame,
             text="Add Category",
             width=140,
             height=44,
@@ -82,10 +94,41 @@ class CategoriesPage(ctk.CTkFrame):
             text_color=TEXT_DARK,
             font=FONT_BODY_BOLD,
             command=self._open_add
-        ).grid(
-            row=0,
-            column=1,
-            sticky="e"
+        ).pack(
+            side="left",
+            padx=(0, 6)
+        )
+
+        ctk.CTkButton(
+            button_frame,
+            text="Edit",
+            width=90,
+            height=44,
+            corner_radius=BUTTON_RADIUS,
+            fg_color=PANEL,
+            hover_color=PANEL_HOVER,
+            text_color=TEXT_DARK,
+            font=FONT_BODY_BOLD,
+            command=self._open_edit
+        ).pack(
+            side="left",
+            padx=6
+        )
+
+        ctk.CTkButton(
+            button_frame,
+            text="Refresh",
+            width=100,
+            height=44,
+            corner_radius=BUTTON_RADIUS,
+            fg_color=PANEL,
+            hover_color=PANEL_HOVER,
+            text_color=TEXT_DARK,
+            font=FONT_BODY_BOLD,
+            command=self.refresh
+        ).pack(
+            side="left",
+            padx=(6, 0)
         )
 
     def _build_table(self):
@@ -94,6 +137,7 @@ class CategoriesPage(ctk.CTkFrame):
             fg_color=PANEL,
             corner_radius=PANEL_RADIUS
         )
+
         panel.grid(
             row=1,
             column=0,
@@ -117,11 +161,6 @@ class CategoriesPage(ctk.CTkFrame):
                     "label": "TYPE",
                     "weight": 1,
                     "minsize": 130
-                },
-                {
-                    "label": "ACTIONS",
-                    "weight": 2,
-                    "minsize": 180
                 },
             ],
             empty_text="No categories yet"
@@ -161,8 +200,7 @@ class CategoriesPage(ctk.CTkFrame):
             self.table.add_row(
                 values=(
                     name,
-                    category_type,
-                    ""
+                    category_type
                 ),
                 row_id=category_id,
                 cell_styles={
@@ -173,46 +211,23 @@ class CategoriesPage(ctk.CTkFrame):
                 }
             )
 
-            row = self.table.rows[-1]
-
-            action_frame = ctk.CTkFrame(
-                row,
-                fg_color="transparent"
-            )
-            action_frame.grid(
-                row=0,
-                column=2,
-                sticky="e",
-                padx=8,
-                pady=5
-            )
-
-            ctk.CTkButton(
-                action_frame,
-                text="Edit",
-                width=68,
-                height=30,
-                corner_radius=BUTTON_RADIUS,
-                fg_color=PANEL_HOVER,
-                hover_color=CONTENT,
-                text_color=TEXT_DARK,
-                font=FONT_BODY_BOLD,
-                command=partial(
-                    self._open_edit,
-                    category_id
-                )
-            ).pack(
-                side="left",
-                padx=(0, 5)
-            )
-
     def _open_add(self):
         CategoryForm(
             self,
             on_saved=self.refresh
         )
 
-    def _open_edit(self, category_id):
+    def _open_edit(self):
+        category_id = self.table.get_selected_row_id()
+
+        if category_id is None:
+            messagebox.showwarning(
+                "No Selection",
+                "Please select a category first.",
+                parent=self
+            )
+            return
+
         try:
             category = category_service.get_category_by_id(
                 category_id
@@ -226,12 +241,22 @@ class CategoriesPage(ctk.CTkFrame):
             )
             return
 
-        if category:
-            CategoryForm(
-                self,
-                category=category,
-                on_saved=self.refresh
+        if not category:
+            messagebox.showerror(
+                "Edit Error",
+                "The selected category no longer exists.",
+                parent=self
             )
+
+            self.refresh()
+            return
+
+        CategoryForm(
+            self,
+            category=category,
+            on_saved=self.refresh
+        )
+
 
 class CategoryForm(ctk.CTkToplevel):
     def __init__(
@@ -266,6 +291,7 @@ class CategoryForm(ctk.CTkToplevel):
             fg_color=PANEL,
             corner_radius=10
         )
+
         panel.pack(
             fill="both",
             expand=True,
@@ -311,6 +337,7 @@ class CategoryForm(ctk.CTkToplevel):
             panel,
             fg_color="transparent"
         )
+
         type_wrapper.pack(
             fill="x",
             padx=28,
@@ -344,6 +371,7 @@ class CategoryForm(ctk.CTkToplevel):
             dropdown_text_color=TEXT_DARK,
             font=FONT_FORM_INPUT
         )
+
         self.type_selector.pack(
             fill="x"
         )
@@ -361,6 +389,7 @@ class CategoryForm(ctk.CTkToplevel):
             panel,
             fg_color="transparent"
         )
+
         button_row.pack(
             fill="x",
             padx=28,
@@ -371,6 +400,7 @@ class CategoryForm(ctk.CTkToplevel):
             0,
             weight=1
         )
+
         button_row.grid_columnconfigure(
             1,
             weight=1
@@ -420,6 +450,7 @@ class CategoryForm(ctk.CTkToplevel):
             parent,
             fg_color="transparent"
         )
+
         wrapper.pack(
             fill="x",
             padx=28,
@@ -445,6 +476,7 @@ class CategoryForm(ctk.CTkToplevel):
             text_color=TEXT_DARK,
             font=FONT_FORM_INPUT
         )
+
         entry.pack(
             fill="x"
         )
