@@ -134,12 +134,6 @@ class AccountsPage(ctk.CTkFrame):
             self,
             columns=[
                 {
-                    "key": "id",
-                    "label": "ID",
-                    "weight": 1,
-                    "minsize": 60,
-                },
-                {
                     "key": "name",
                     "label": "NAME",
                     "weight": 3,

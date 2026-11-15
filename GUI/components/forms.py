@@ -1,4 +1,6 @@
+import tkinter as tk
 import re
+import os
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -31,6 +33,7 @@ from GUI.utils.formatters import (
 )
 
 
+
 class FormWindow(ctk.CTkToplevel):
     def __init__(
         self,
@@ -54,6 +57,36 @@ class FormWindow(ctk.CTkToplevel):
         self.buttons = None
 
         self._build_base(title)
+
+        self.calendar_image = tk.PhotoImage(
+            file=os.path.join(
+                os.path.dirname(
+                    os.path.dirname(
+                        os.path.dirname(__file__)
+                    )
+                ),
+                "Assets",
+                "Images",
+                "calendar.png",
+            )
+        )
+
+        image_width = self.calendar_image.width()
+        image_height = self.calendar_image.height()
+
+        scale = max(
+            1,
+            min(
+                image_width // 20,
+                image_height // 20,
+            ),
+        )
+
+        if scale > 1:
+            self.calendar_image = self.calendar_image.subsample(
+                scale,
+                scale,
+            )
 
     def _build_base(self, title):
         self.panel = ctk.CTkFrame(
@@ -221,16 +254,16 @@ class FormWindow(ctk.CTkToplevel):
             sticky="ew",
         )
 
-        calendar_button = ctk.CTkButton(
+        calendar_button = tk.Button(
             row,
-            text="▣",
+            image=self.calendar_image,
             width=42,
             height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BORDER,
-            hover_color=PANEL_HOVER,
-            text_color=TEXT_DARK,
-            font=FONT_BODY_BOLD,
+            bg=INPUT_BORDER,
+            activebackground=PANEL_HOVER,
+            borderwidth=0,
+            highlightthickness=0,
+            relief="flat",
             command=lambda: self._open_calendar(entry),
         )
 

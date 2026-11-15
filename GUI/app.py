@@ -5,6 +5,8 @@ from GUI.components.sidebar import Sidebar
 from GUI.pages.accounts import AccountsPage
 from GUI.pages.categories import CategoriesPage
 from GUI.pages.transactions import TransactionsPage
+from GUI.pages.transfer import TransferPage
+from GUI.pages.assets import AssetsPage
 from GUI.styles.colors import BG, CONTENT
 
 
@@ -51,6 +53,8 @@ class BudgetTrackerApp(ctk.CTk):
                 "Accounts",
                 "Categories",
                 "Transactions",
+                "Transfer",
+                "Assets",
             ],
             command=self.navigate,
         )
@@ -141,6 +145,18 @@ class BudgetTrackerApp(ctk.CTk):
 
         elif page_name == "Transactions":
             page = TransactionsPage(
+                self.page_container,
+                self.navigate,
+            )
+
+        elif page_name == "Transfer":
+            page = TransferPage(
+                self.page_container,
+                self.navigate,
+            )
+
+        elif page_name == "Assets":
+            page = AssetsPage(
                 self.page_container,
                 self.navigate,
             )

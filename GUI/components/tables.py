@@ -104,6 +104,7 @@ class Tables(ctk.CTkFrame):
 
         self.cells = []
         self.header_labels = []
+        self.selected_row_id = None
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -208,6 +209,13 @@ class Tables(ctk.CTkFrame):
 
         self.cells.clear()
         self.header_labels.clear()
+
+        if self.selected_row_id is not None:
+            if not any(
+                self._get_row_id(row) == self.selected_row_id
+                for row in self.rows
+            ):
+                self.selected_row_id = None
 
         self._build_header()
         self._build_body()
@@ -335,9 +343,29 @@ class Tables(ctk.CTkFrame):
         row_index,
         row_data
     ):
+        row_id = self._get_row_id(row_data)
+
+        is_selected = (
+            TABLE_ENABLE_ROW_SELECTION
+            and row_id is not None
+            and row_id == self.selected_row_id
+        )
+
+        row_color = (
+            TABLE_ROW_SELECTED
+            if is_selected
+            else TABLE_ROW_BG
+        )
+
+        text_color = (
+            TABLE_SELECTED_TEXT
+            if is_selected
+            else None
+        )
+
         row = ctk.CTkFrame(
             parent,
-            fg_color=TABLE_ROW_BG,
+            fg_color=row_color,
             corner_radius=TABLE_ROW_CORNER_RADIUS
         )
 
@@ -365,9 +393,7 @@ class Tables(ctk.CTkFrame):
                 )
             )
 
-        row_id = self._get_row_id(row_data)
-
-        if self.command:
+        if self.command or TABLE_ENABLE_ROW_SELECTION:
             row.bind(
                 "<Button-1>",
                 lambda event, value=row_data:
@@ -388,21 +414,25 @@ class Tables(ctk.CTkFrame):
                 key
             )
 
+            cell_text_color = (
+                text_color
+                if text_color is not None
+                else self._get_column_text_color(
+                    column_config
+                )
+            )
+
             label = ctk.CTkLabel(
                 row,
                 text="" if value is None else str(value),
-                text_color=self._get_column_text_color(
-                    column_config
-                ),
+                text_color=cell_text_color,
                 font=self._get_column_font(
                     column_config
                 ),
                 anchor=self._get_column_anchor(
                     column_config
                 ),
-                fg_color=self._get_column_row_color(
-                    column_config
-                ),
+                fg_color=row_color,
             )
 
             label.grid(
@@ -413,7 +443,7 @@ class Tables(ctk.CTkFrame):
                 pady=self.cell_pad_y
             )
 
-            if self.command:
+            if self.command or TABLE_ENABLE_ROW_SELECTION:
                 label.bind(
                     "<Button-1>",
                     lambda event, value=row_data:
@@ -432,11 +462,20 @@ class Tables(ctk.CTkFrame):
         if TABLE_ENABLE_ROW_HOVER:
             self._bind_row_hover(
                 row,
-                cell_labels
+                cell_labels,
+                is_selected
             )
 
-    def _bind_row_hover(self, row, labels):
+    def _bind_row_hover(
+        self,
+        row,
+        labels,
+        is_selected=False
+    ):
         def on_enter(event):
+            if self._is_selected_row(row):
+                return
+
             row.configure(
                 fg_color=TABLE_ROW_HOVER
             )
@@ -448,6 +487,9 @@ class Tables(ctk.CTkFrame):
                 )
 
         def on_leave(event):
+            if self._is_selected_row(row):
+                return
+
             row.configure(
                 fg_color=TABLE_ROW_BG
             )
@@ -477,6 +519,56 @@ class Tables(ctk.CTkFrame):
                 "<Leave>",
                 on_leave
             )
+
+    def _is_selected_row(self, row):
+        for cell in self.cells:
+            if cell["row"] is row:
+                return (
+                    cell["id"] == self.selected_row_id
+                )
+
+        return False
+
+    def _apply_selection(self):
+        for cell in self.cells:
+            is_selected = (
+                TABLE_ENABLE_ROW_SELECTION
+                and cell["id"] == self.selected_row_id
+            )
+
+            background = (
+                TABLE_ROW_SELECTED
+                if is_selected
+                else TABLE_ROW_BG
+            )
+
+            text_color = (
+                TABLE_SELECTED_TEXT
+                if is_selected
+                else None
+            )
+
+            cell["row"].configure(
+                fg_color=background
+            )
+
+            for column_index, label in enumerate(
+                cell["widgets"]
+            ):
+                column_config = self.columns[
+                    column_index
+                ]
+
+                label.configure(
+                    fg_color=background,
+                    text_color=(
+                        text_color
+                        if text_color is not None
+                        else self._get_column_text_color(
+                            column_config
+                        )
+                    )
+                )
 
     def _get_value(self, row_data, key):
         if isinstance(row_data, dict):
@@ -509,11 +601,29 @@ class Tables(ctk.CTkFrame):
         return None
 
     def _row_clicked(self, row_data):
+        if TABLE_ENABLE_ROW_SELECTION:
+            self.selected_row_id = self._get_row_id(
+                row_data
+            )
+            self._apply_selection()
+
         if self.command:
             self.command(row_data)
 
     def set_rows(self, rows):
+        previous_selection = self.selected_row_id
+
         self.rows = rows or []
+
+        if previous_selection is not None:
+            if any(
+                self._get_row_id(row) == previous_selection
+                for row in self.rows
+            ):
+                self.selected_row_id = previous_selection
+            else:
+                self.selected_row_id = None
+
         self._build()
 
     def add_row(self, row_data):
@@ -526,6 +636,12 @@ class Tables(ctk.CTkFrame):
         ):
             if self._get_row_id(existing) == row_id:
                 self.rows[index] = row_data
+
+                if self.selected_row_id == row_id:
+                    self.selected_row_id = self._get_row_id(
+                        row_data
+                    )
+
                 self._build()
                 return
 
@@ -536,10 +652,14 @@ class Tables(ctk.CTkFrame):
             if self._get_row_id(row) != row_id
         ]
 
+        if self.selected_row_id == row_id:
+            self.selected_row_id = None
+
         self._build()
 
     def clear(self):
         self.rows = []
+        self.selected_row_id = None
         self._build()
 
     def get_rows(self):
@@ -551,6 +671,21 @@ class Tables(ctk.CTkFrame):
                 return row
 
         return None
+
+    def get_selected_row(self):
+        if self.selected_row_id is None:
+            return None
+
+        return self.get_row(
+            self.selected_row_id
+        )
+
+    def get_selected_id(self):
+        return self.selected_row_id
+
+    def clear_selection(self):
+        self.selected_row_id = None
+        self._apply_selection()
 
     def set_command(self, command):
         self.command = command
@@ -599,4 +734,5 @@ class Tables(ctk.CTkFrame):
     ):
         self.empty_text = message
         self.rows = []
+        self.selected_row_id = None
         self._build()

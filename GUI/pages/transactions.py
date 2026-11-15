@@ -143,12 +143,6 @@ class TransactionsPage(ctk.CTkFrame):
             self,
             columns=[
                 {
-                    "key": "id",
-                    "label": "ID",
-                    "weight": 1,
-                    "minsize": 60,
-                },
-                {
                     "key": "date",
                     "label": "DATE",
                     "weight": 1,
@@ -367,7 +361,7 @@ class TransactionForm(FormWindow):
                 else "Add Expense"
             ),
             width=560,
-            height=620,
+            height=650,
         )
 
         self._load_data()
