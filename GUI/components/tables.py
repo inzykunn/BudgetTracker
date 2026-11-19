@@ -105,6 +105,7 @@ class Tables(ctk.CTkFrame):
         self.cells = []
         self.header_labels = []
         self.selected_row_id = None
+        self.body = None
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -209,6 +210,7 @@ class Tables(ctk.CTkFrame):
 
         self.cells.clear()
         self.header_labels.clear()
+        self.body = None
 
         if self.selected_row_id is not None:
             if not any(
@@ -276,13 +278,15 @@ class Tables(ctk.CTkFrame):
             self.header_labels.append(label)
 
     def _build_body(self):
-        body = ctk.CTkScrollableFrame(
+        self.body = ctk.CTkScrollableFrame(
             self,
             fg_color="transparent",
-            corner_radius=0
+            corner_radius=0,
+            scrollbar_button_color=TABLE_ROW_HOVER,
+            scrollbar_button_hover_color=TABLE_ROW_SELECTED,
         )
 
-        body.grid(
+        self.body.grid(
             row=1,
             column=0,
             sticky="nsew",
@@ -293,10 +297,15 @@ class Tables(ctk.CTkFrame):
             )
         )
 
+        self.body.grid_columnconfigure(
+            0,
+            weight=1
+        )
+
         for column_index, column_config in enumerate(
             self.columns
         ):
-            body.grid_columnconfigure(
+            self.body.grid_columnconfigure(
                 column_index,
                 weight=self._get_column_weight(
                     column_config
@@ -308,7 +317,7 @@ class Tables(ctk.CTkFrame):
 
         if not self.rows:
             empty = ctk.CTkLabel(
-                body,
+                self.body,
                 text=self.empty_text,
                 text_color=TABLE_EMPTY_TEXT,
                 font=TABLE_EMPTY_FONT,
@@ -332,7 +341,7 @@ class Tables(ctk.CTkFrame):
             self.rows
         ):
             self._build_row(
-                body,
+                self.body,
                 row_index,
                 row_data
             )
@@ -605,6 +614,7 @@ class Tables(ctk.CTkFrame):
             self.selected_row_id = self._get_row_id(
                 row_data
             )
+
             self._apply_selection()
 
         if self.command:
@@ -708,6 +718,8 @@ class Tables(ctk.CTkFrame):
     ):
         for widget in self.winfo_children():
             widget.destroy()
+
+        self.body = None
 
         if loading:
             label = ctk.CTkLabel(

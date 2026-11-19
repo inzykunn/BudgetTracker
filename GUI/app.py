@@ -7,6 +7,12 @@ from GUI.pages.categories import CategoriesPage
 from GUI.pages.transactions import TransactionsPage
 from GUI.pages.transfer import TransferPage
 from GUI.pages.assets import AssetsPage
+from GUI.pages.inventory import InventoryPage
+from GUI.pages.receivables import ReceivablesPage
+from GUI.pages.liabilities import LiabilitiesPage
+from GUI.pages.dashboard import DashboardPage
+from GUI.pages.peoples import PeoplePage
+from GUI.pages.reports import ReportsPage
 from GUI.styles.colors import BG, CONTENT
 
 
@@ -50,11 +56,17 @@ class BudgetTrackerApp(ctk.CTk):
         self.sidebar = Sidebar(
             self,
             items=[
+                "Dashboard",
                 "Accounts",
                 "Categories",
                 "Transactions",
                 "Transfer",
                 "Assets",
+                "Inventory",
+                "Receivables",
+                "Peoples",
+                "Liabilities",
+                "Reports",
             ],
             command=self.navigate,
         )
@@ -131,7 +143,13 @@ class BudgetTrackerApp(ctk.CTk):
 
         self.header.set_title(page_name)
 
-        if page_name == "Accounts":
+        if page_name == "Dashboard":
+            page = DashboardPage(
+                self.page_container,
+                self.navigate,
+            )
+
+        elif page_name == "Accounts":
             page = AccountsPage(
                 self.page_container,
                 self.navigate,
@@ -157,6 +175,36 @@ class BudgetTrackerApp(ctk.CTk):
 
         elif page_name == "Assets":
             page = AssetsPage(
+                self.page_container,
+                self.navigate,
+            )
+
+        elif page_name == "Inventory":
+            page = InventoryPage(
+                self.page_container,
+                self.navigate,
+            )
+
+        elif page_name == "Receivables":
+            page = ReceivablesPage(
+                self.page_container,
+                self.navigate,
+            )
+
+        elif page_name == "Peoples":
+            page = PeoplePage(
+                self.page_container,
+                self.navigate,
+            )
+
+        elif page_name == "Liabilities":
+            page = LiabilitiesPage(
+                self.page_container,
+                self.navigate,
+            )
+
+        elif page_name == "Reports":
+            page = ReportsPage(
                 self.page_container,
                 self.navigate,
             )

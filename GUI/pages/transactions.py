@@ -1,21 +1,14 @@
-import customtkinter as ctk
 from datetime import date
 
-from services import (
-    transaction_service,
-    account_service,
-    category_service,
-)
+import customtkinter as ctk
 
 from GUI.components.buttons import Buttons
 from GUI.components.forms import FormWindow
 from GUI.components.tables import Tables
-
 from GUI.styles.colors import (
     CONTENT,
     TEXT_DARK,
 )
-
 from GUI.styles.theme import (
     CONTENT_PAD_X,
     CONTENT_PAD_Y,
@@ -23,18 +16,17 @@ from GUI.styles.theme import (
     FONT_BODY,
     FONT_BODY_BOLD,
 )
-
 from GUI.utils.feedback import (
     show_warning,
     show_operation_error,
     show_save_success,
 )
 
-from GUI.utils.validation import (
-    require_text,
-    validate_length,
+from services import (
+    transaction_service,
+    account_service,
+    category_service,
 )
-
 
 TRANSACTION_TYPES = [
     "INCOME",
@@ -440,15 +432,12 @@ class TransactionForm(FormWindow):
                 self.date_entry
             )
 
-            description = validate_length(
-                require_text(
-                    self.description_entry.get(),
-                    "Transaction description",
-                ),
-                "Transaction description",
-                min_length=1,
-                max_length=255,
-            )
+            description = self.description_entry.get().strip()
+
+            if len(description) > 255:
+                raise ValueError(
+                    "Transaction description must not exceed 255 characters."
+                )
 
             account_id = self._get_selected_id(
                 self.account_selector

@@ -1,32 +1,36 @@
-from datetime import date
-from tkinter import messagebox
 import customtkinter as ctk
 
 from services import inventory_service, account_service
+
+from GUI.components.buttons import Buttons
+from GUI.components.forms import FormWindow
 from GUI.components.tables import Tables
+
 from GUI.styles.colors import (
     CONTENT,
-    PANEL,
-    PANEL_HOVER,
     TEXT_DARK,
-    TEXT_LIGHT,
-    SUCCESS,
-    DANGER,
-    INPUT_BG,
-    INPUT_BORDER,
 )
+
 from GUI.styles.theme import (
     CONTENT_PAD_X,
     CONTENT_PAD_Y,
-    PANEL_RADIUS,
-    BUTTON_RADIUS,
-    INPUT_RADIUS,
-    FONT_SECTION,
-    FONT_BODY,
-    FONT_BODY_BOLD,
-    FONT_FORM_LABEL,
-    FONT_FORM_INPUT,
+    FONT_PAGE_TITLE,
 )
+
+from GUI.utils.feedback import (
+    show_warning,
+    show_operation_error,
+    show_save_success,
+    show_update_success,
+    show_info,
+)
+
+from GUI.utils.validation import (
+    require_text,
+    validate_length,
+)
+
+from GUI.utils.formatters import format_currency
 
 
 class InventoryPage(ctk.CTkFrame):
@@ -34,23 +38,34 @@ class InventoryPage(ctk.CTkFrame):
         super().__init__(
             master,
             corner_radius=0,
-            fg_color=CONTENT
+            fg_color=CONTENT,
         )
 
         self.navigate = navigate
         self.selected_item_id = None
 
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_columnconfigure(
+            0,
+            weight=1,
+        )
 
+        self.grid_rowconfigure(
+            1,
+            weight=1,
+        )
+
+        self._build()
+        self.refresh()
+
+    def _build(self):
         self._build_header()
         self._build_table()
-        self.refresh()
 
     def _build_header(self):
         header = ctk.CTkFrame(
             self,
-            fg_color="transparent"
+            fg_color="transparent",
+            corner_radius=0,
         )
 
         header.grid(
@@ -58,289 +73,289 @@ class InventoryPage(ctk.CTkFrame):
             column=0,
             sticky="ew",
             padx=CONTENT_PAD_X,
-            pady=(CONTENT_PAD_Y, 10)
+            pady=(CONTENT_PAD_Y, 12),
         )
 
-        header.grid_columnconfigure(0, weight=1)
+        header.grid_columnconfigure(
+            0,
+            weight=1,
+        )
 
         ctk.CTkLabel(
             header,
             text="Inventory",
-            font=FONT_SECTION,
-            text_color=TEXT_DARK
+            font=FONT_PAGE_TITLE,
+            text_color=TEXT_DARK,
         ).grid(
             row=0,
             column=0,
-            sticky="w"
+            sticky="w",
         )
 
-        actions = ctk.CTkFrame(
+        self.header_buttons = Buttons(
             header,
-            fg_color="transparent"
+            actions=[
+                {
+                    "label": "Add Inventory",
+                    "command": self._open_add,
+                    "style": "primary",
+                    "width": 140,
+                    "height": 40,
+                },
+                {
+                    "label": "Sell",
+                    "command": self._open_sell,
+                    "style": "default",
+                    "width": 80,
+                    "height": 40,
+                },
+                {
+                    "label": "Edit",
+                    "command": self._open_edit,
+                    "style": "default",
+                    "width": 80,
+                    "height": 40,
+                },
+                {
+                    "label": "Refresh",
+                    "command": self.refresh,
+                    "style": "default",
+                    "width": 90,
+                    "height": 40,
+                },
+            ],
+            columns=4,
+            padx=3,
+            pady=0,
         )
 
-        actions.grid(
+        self.header_buttons.grid(
             row=0,
             column=1,
-            sticky="e"
+            sticky="e",
         )
-
-        buttons = [
-            ("Add Item", self._open_add_form),
-            ("Sell Item", self._open_sell_form),
-            ("Edit Item", self._open_edit_form),
-            ("Refresh", self.refresh),
-        ]
-
-        for index, (text, command) in enumerate(buttons):
-            ctk.CTkButton(
-                actions,
-                text=text,
-                width=140,
-                height=44,
-                corner_radius=BUTTON_RADIUS,
-                fg_color=PANEL,
-                hover_color=PANEL_HOVER,
-                text_color=TEXT_DARK,
-                font=FONT_BODY_BOLD,
-                command=command
-            ).grid(
-                row=0,
-                column=index,
-                padx=4,
-                pady=2
-            )
 
     def _build_table(self):
-        panel = ctk.CTkFrame(
+        self.table = Tables(
             self,
-            fg_color=PANEL,
-            corner_radius=PANEL_RADIUS
+            columns=[
+                {
+                    "key": "name",
+                    "label": "NAME",
+                    "weight": 3,
+                    "minsize": 180,
+                },
+                {
+                    "key": "purchase_cost",
+                    "label": "PURCHASE COST",
+                    "weight": 1,
+                    "minsize": 140,
+                    "anchor": "e",
+                },
+                {
+                    "key": "sale_price",
+                    "label": "SALE PRICE",
+                    "weight": 1,
+                    "minsize": 140,
+                    "anchor": "e",
+                },
+                {
+                    "key": "acquired",
+                    "label": "ACQUIRED",
+                    "weight": 1,
+                    "minsize": 110,
+                },
+                {
+                    "key": "sold",
+                    "label": "SOLD",
+                    "weight": 1,
+                    "minsize": 110,
+                },
+                {
+                    "key": "status",
+                    "label": "STATUS",
+                    "weight": 1,
+                    "minsize": 110,
+                    "anchor": "center",
+                },
+                {
+                    "key": "profit",
+                    "label": "PROFIT",
+                    "weight": 1,
+                    "minsize": 130,
+                    "anchor": "e",
+                },
+            ],
+            empty_text="No inventory items yet",
+            command=self._select_item,
         )
 
-        panel.grid(
+        self.table.grid(
             row=1,
             column=0,
             sticky="nsew",
             padx=CONTENT_PAD_X,
-            pady=(0, CONTENT_PAD_Y)
-        )
-
-        panel.grid_columnconfigure(0, weight=1)
-        panel.grid_rowconfigure(0, weight=1)
-
-        self.table = Tables(
-            panel,
-            columns=[
-                {
-                    "label": "NAME",
-                    "weight": 3,
-                    "minsize": 180
-                },
-                {
-                    "label": "PURCHASE COST",
-                    "weight": 1,
-                    "minsize": 140,
-                    "anchor": "e"
-                },
-                {
-                    "label": "SALE PRICE",
-                    "weight": 1,
-                    "minsize": 140,
-                    "anchor": "e"
-                },
-                {
-                    "label": "ACQUIRED",
-                    "weight": 1,
-                    "minsize": 110
-                },
-                {
-                    "label": "SOLD",
-                    "weight": 1,
-                    "minsize": 110
-                },
-                {
-                    "label": "STATUS",
-                    "weight": 1,
-                    "minsize": 110,
-                    "anchor": "center"
-                },
-                {
-                    "label": "PROFIT",
-                    "weight": 1,
-                    "minsize": 130,
-                    "anchor": "e"
-                },
-            ],
-            empty_text="No inventory items yet",
-            on_double_click=self._show_item
-        )
-
-        self.table.grid(
-            row=0,
-            column=0,
-            sticky="nsew",
-            padx=18,
-            pady=18
+            pady=(0, CONTENT_PAD_Y),
         )
 
     def refresh(self):
         try:
             items = inventory_service.get_inventory_items()
 
+            rows = []
+
+            for item in items:
+                (
+                    item_id,
+                    name,
+                    purchase_cost,
+                    sale_price,
+                    acquired_date,
+                    sold_date,
+                    status,
+                    notes,
+                ) = item
+
+                profit = 0
+
+                if sale_price is not None:
+                    profit = sale_price - purchase_cost
+
+                rows.append(
+                    {
+                        "id": item_id,
+                        "name": name,
+                        "purchase_cost": format_currency(
+                            purchase_cost
+                        ),
+                        "sale_price": (
+                            format_currency(sale_price)
+                            if sale_price is not None
+                            else "-"
+                        ),
+                        "acquired": str(
+                            acquired_date or ""
+                        )[:10],
+                        "sold": (
+                            str(sold_date)[:10]
+                            if sold_date
+                            else "-"
+                        ),
+                        "status": status,
+                        "profit": (
+                            format_currency(profit)
+                            if sale_price is not None
+                            else "-"
+                        ),
+                    }
+                )
+
+            self.table.set_rows(rows)
+
+            if self.selected_item_id is not None:
+                if not any(
+                    row["id"] == self.selected_item_id
+                    for row in rows
+                ):
+                    self.selected_item_id = None
+
         except Exception as exc:
-            messagebox.showerror(
-                "Load Error",
-                f"Unable to load inventory.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Load Inventory",
+                exc,
             )
+
+    def _select_item(self, item):
+        if not item:
             return
 
-        self.table.clear()
+        if isinstance(item, dict):
+            self.selected_item_id = item.get("id")
+        else:
+            self.selected_item_id = item
 
-        for item in items:
-            (
-                item_id,
-                name,
-                purchase_cost,
-                sale_price,
-                acquired_date,
-                sold_date,
-                status,
-                notes
-            ) = item
-
-            profit = 0
-
-            if sale_price is not None:
-                profit = sale_price - purchase_cost
-
-            self.table.add_row(
-                values=(
-                    name,
-                    self._money(purchase_cost),
-                    (
-                        self._money(sale_price)
-                        if sale_price is not None
-                        else "-"
-                    ),
-                    acquired_date,
-                    sold_date or "-",
-                    status,
-                    (
-                        self._money(profit)
-                        if sale_price is not None
-                        else "-"
-                    ),
-                ),
-                row_id=item_id,
-                cell_styles={
-                    1: {
-                        "font": FONT_BODY_BOLD,
-                        "text_color": TEXT_DARK
-                    },
-                    2: {
-                        "font": FONT_BODY_BOLD,
-                        "text_color": (
-                            SUCCESS
-                            if sale_price is not None
-                            else TEXT_DARK
-                        )
-                    },
-                    5: {
-                        "font": FONT_BODY_BOLD,
-                        "text_color": (
-                            SUCCESS
-                            if status == "AVAILABLE"
-                            else DANGER
-                        )
-                    },
-                    6: {
-                        "font": FONT_BODY_BOLD,
-                        "text_color": (
-                            SUCCESS
-                            if profit > 0
-                            else DANGER
-                            if profit < 0
-                            else TEXT_DARK
-                        )
-                    },
-                }
-            )
-
-    def _selected_item(self):
+    def _get_selected_item(self):
         if self.selected_item_id is None:
-            messagebox.showinfo(
+            show_warning(
+                self,
                 "Select Item",
-                "Double-click an inventory item first, then use the action buttons to manage it.",
-                parent=self
+                "Select an inventory item first.",
             )
             return None
 
         try:
-            return inventory_service.get_inventory_item_by_id(
+            item = inventory_service.get_inventory_item_by_id(
                 self.selected_item_id
             )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Inventory Error",
-                f"Unable to load the inventory item.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Load Inventory Item",
+                exc,
             )
             return None
 
-    def _open_add_form(self):
+        if not item:
+            show_warning(
+                self,
+                "Item Not Found",
+                "The selected inventory item no longer exists.",
+            )
+            self.selected_item_id = None
+            self.refresh()
+            return None
+
+        return item
+
+    def _open_add(self):
         InventoryForm(
             self,
-            mode="add",
-            on_saved=self.refresh
+            on_saved=self.refresh,
         )
 
-    def _open_edit_form(self):
-        item = self._selected_item()
+    def _open_edit(self):
+        item = self._get_selected_item()
 
         if item is None:
             return
 
         if item[6] == "SOLD":
-            messagebox.showwarning(
+            show_warning(
+                self,
                 "Unavailable",
                 "A sold inventory item cannot be edited.",
-                parent=self
             )
             return
 
         InventoryForm(
             self,
-            mode="edit",
             item=item,
-            on_saved=self.refresh
+            on_saved=self.refresh,
         )
 
-    def _open_sell_form(self):
-        item = self._selected_item()
+    def _open_sell(self):
+        item = self._get_selected_item()
 
         if item is None:
             return
 
         if item[6] == "SOLD":
-            messagebox.showwarning(
+            show_warning(
+                self,
                 "Unavailable",
                 "This inventory item has already been sold.",
-                parent=self
             )
             return
 
         SellInventoryForm(
             self,
             item,
-            on_saved=self.refresh
+            on_saved=self.refresh,
         )
 
     def _show_item(self, item_id):
-        self.selected_item_id = item_id
-
         try:
             item = inventory_service.get_inventory_item_by_id(
                 item_id
@@ -351,10 +366,10 @@ class InventoryPage(ctk.CTkFrame):
             )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Inventory Error",
-                f"Unable to load inventory details.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Load Inventory Item",
+                exc,
             )
             return
 
@@ -369,442 +384,254 @@ class InventoryPage(ctk.CTkFrame):
             acquired_date,
             sold_date,
             status,
-            notes
+            notes,
         ) = item
 
         details = (
             f"Name: {name}\n"
-            f"Purchase Cost: {self._money(purchase_cost)}\n"
+            f"Purchase Cost: {format_currency(purchase_cost)}\n"
             f"Sale Price: "
-            f"{self._money(sale_price) if sale_price is not None else 'Not sold'}\n"
+            f"{format_currency(sale_price) if sale_price is not None else 'Not sold'}\n"
             f"Acquired Date: {acquired_date}\n"
             f"Sold Date: {sold_date or 'Not sold'}\n"
             f"Status: {status}\n"
             f"Profit: "
-            f"{self._money(profit) if sale_price is not None else 'Not sold'}\n"
+            f"{format_currency(profit) if sale_price is not None else 'Not sold'}\n"
             f"Notes: {notes or 'None'}"
         )
 
-        messagebox.showinfo(
+        show_info(
+            self,
             "Inventory Item",
             details,
-            parent=self
         )
 
-    @staticmethod
-    def _money(value):
-        return f"₱{value / 100:,.2f}"
 
-
-class InventoryForm(ctk.CTkToplevel):
+class InventoryForm(FormWindow):
     def __init__(
         self,
         master,
-        mode="add",
         item=None,
-        on_saved=None
+        on_saved=None,
     ):
-        super().__init__(master)
-
-        self.master_page = master
-        self.mode = mode
         self.item = item
         self.on_saved = on_saved
 
-        self.title(
-            "Add Inventory Item"
-            if mode == "add"
-            else "Edit Inventory Item"
+        super().__init__(
+            master,
+            "Edit Inventory Item"
+            if item
+            else "Add Inventory Item",
+            width=560,
+            height=820 if not item else 560,
         )
-
-        self.geometry("600x800")
-        self.resizable(False, False)
-        self.configure(fg_color=CONTENT)
-
-        self.transient(master)
-        self.grab_set()
 
         self._build()
 
     def _build(self):
-        panel = ctk.CTkFrame(
-            self,
-            fg_color=PANEL,
-            corner_radius=PANEL_RADIUS
+        self.add_description(
+            "Enter the inventory item details below."
         )
 
-        panel.pack(
-            fill="both",
-            expand=True,
-            padx=18,
-            pady=18
-        )
-
-        ctk.CTkLabel(
-            panel,
-            text=(
-                "Add Inventory Item"
-                if self.mode == "add"
-                else "Edit Inventory Item"
-            ),
-            font=FONT_SECTION,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(24, 4)
-        )
-
-        ctk.CTkLabel(
-            panel,
-            text="Record the inventory item details below.",
-            font=FONT_BODY,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(0, 18)
-        )
-
-        self.name_entry = self._field(
-            panel,
+        self.name_entry = self.add_field(
             "Name",
-            self.item[1] if self.item else ""
-        )
-
-        self.purchase_entry = self._field(
-            panel,
-            "Purchase Cost",
-            self._amount(self.item[2])
+            self.item[1]
             if self.item
-            else ""
+            else "",
         )
 
-        self.acquired_entry = self._field(
-            panel,
+        self.purchase_cost_entry = self.add_currency_field(
+            "Purchase Cost",
+            self.item[2]
+            if self.item
+            else "",
+        )
+
+        self.acquired_date_entry = self.add_date_field(
             "Acquired Date",
             self.item[4]
             if self.item
-            else date.today().isoformat()
+            else "",
         )
 
-        if self.mode == "add":
-            self.transaction_date_entry = self._field(
-                panel,
+        if self.item is None:
+            self.transaction_date_entry = self.add_date_field(
                 "Purchase Transaction Date",
-                date.today().isoformat()
+                "",
             )
 
-            self.description_entry = self._field(
-                panel,
+            self.description_entry = self.add_field(
                 "Purchase Description",
-                ""
+                "",
             )
 
             accounts = [
-                account
+                f"{account[0]} - {account[1]}"
                 for account in account_service.get_accounts()
                 if account[3]
             ]
 
-            self.account_map = {
-                account[1]: account[0]
-                for account in accounts
-            }
-
-            account_names = list(
-                self.account_map.keys()
-            )
-
-            self.account_combo = self._combo(
-                panel,
+            self.payment_account_selector = self.add_selector(
                 "Payment Account",
-                account_names or ["No accounts available"],
-                (
-                    account_names[0]
-                    if account_names
-                    else "No accounts available"
-                )
+                accounts,
             )
 
-        self.notes_entry = self._field(
-            panel,
+        self.notes_entry = self.add_field(
             "Notes",
-            self.item[7] if self.item else ""
+            self.item[7]
+            if self.item
+            else "",
         )
 
-        buttons = ctk.CTkFrame(
-            panel,
-            fg_color="transparent"
+        self.add_buttons(
+            save_text=(
+                "Save Changes"
+                if self.item
+                else "Save Inventory"
+            ),
+            save_command=self._save,
         )
 
-        buttons.pack(
-            fill="x",
-            padx=28,
-            pady=(20, 24)
-        )
-
-        buttons.grid_columnconfigure(
-            (0, 1),
-            weight=1
-        )
-
-        ctk.CTkButton(
-            buttons,
-            text="Cancel",
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=PANEL_HOVER,
-            hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            font=FONT_BODY_BOLD,
-            command=self.destroy
-        ).grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=(0, 6)
-        )
-
-        ctk.CTkButton(
-            buttons,
-            text="Save Item",
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=TEXT_DARK,
-            hover_color="#285B4B",
-            text_color=TEXT_LIGHT,
-            font=FONT_BODY_BOLD,
-            command=self._save
-        ).grid(
-            row=0,
-            column=1,
-            sticky="ew",
-            padx=(6, 0)
-        )
-
-    def _field(self, parent, label, value):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
-        )
-
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
-
-        entry = ctk.CTkEntry(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT
-        )
-
-        entry.pack(fill="x")
-
-        if value:
-            entry.insert(
-                0,
-                str(value)
+    def _validate(self):
+        try:
+            name = validate_length(
+                require_text(
+                    self.name_entry.get(),
+                    "Inventory name",
+                ),
+                "Inventory name",
+                min_length=1,
+                max_length=100,
             )
 
-        return entry
+            purchase_cost = self.get_currency_value(
+                self.purchase_cost_entry
+            )
 
-    def _combo(
-        self,
-        parent,
-        label,
-        values,
-        selected
-    ):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
+            if purchase_cost < 0:
+                raise ValueError(
+                    "Purchase cost cannot be negative."
+                )
 
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
-        )
+            acquired_date = self.get_date_value(
+                self.acquired_date_entry
+            )
 
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
+            notes = self.notes_entry.get().strip()
 
-        combo = ctk.CTkComboBox(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            button_color=PANEL_HOVER,
-            button_hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            dropdown_fg_color=INPUT_BG,
-            dropdown_hover_color=PANEL_HOVER,
-            dropdown_text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT,
-            state="readonly",
-            values=values
-        )
+            if self.item is None:
+                transaction_date = self.get_date_value(
+                    self.transaction_date_entry
+                )
 
-        combo.pack(fill="x")
-        combo.set(selected)
+                description = validate_length(
+                    require_text(
+                        self.description_entry.get(),
+                        "Purchase description",
+                    ),
+                    "Purchase description",
+                    min_length=1,
+                    max_length=200,
+                )
 
-        return combo
+                account = self.payment_account_selector.get()
 
-    @staticmethod
-    def _amount(value):
-        return f"{value / 100:.2f}"
+                if not account:
+                    raise ValueError(
+                        "Payment account is required."
+                    )
+
+                account_id = int(
+                    account.split(" - ", 1)[0]
+                )
+
+                return (
+                    name,
+                    purchase_cost,
+                    acquired_date,
+                    notes or None,
+                    transaction_date,
+                    description,
+                    account_id,
+                )
+
+            return (
+                name,
+                purchase_cost,
+                acquired_date,
+                notes or None,
+            )
+
+        except ValueError as exc:
+            show_warning(
+                self,
+                "Validation Error",
+                str(exc),
+            )
+            return None
 
     def _save(self):
-        name = self.name_entry.get().strip()
-        purchase_text = (
-            self.purchase_entry
-            .get()
-            .strip()
-            .replace(",", "")
-        )
+        values = self._validate()
 
-        acquired_date = (
-            self.acquired_entry
-            .get()
-            .strip()
-        )
-
-        notes = (
-            self.notes_entry
-            .get()
-            .strip()
-            or None
-        )
-
-        if not name or not purchase_text or not acquired_date:
-            messagebox.showwarning(
-                "Missing Information",
-                "Please complete the required fields.",
-                parent=self
-            )
+        if values is None:
             return
 
         try:
-            date.fromisoformat(acquired_date)
-
-            purchase_cost = int(
-                round(
-                    float(purchase_text) * 100
-                )
-            )
-
-        except ValueError:
-            messagebox.showwarning(
-                "Invalid Information",
-                "Use YYYY-MM-DD for the date and a valid numeric purchase cost.",
-                parent=self
-            )
-            return
-
-        if purchase_cost < 0:
-            messagebox.showwarning(
-                "Invalid Amount",
-                "Purchase cost cannot be negative.",
-                parent=self
-            )
-            return
-
-        try:
-            if self.mode == "add":
-                transaction_date = (
-                    self.transaction_date_entry
-                    .get()
-                    .strip()
-                )
-
-                description = (
-                    self.description_entry
-                    .get()
-                    .strip()
-                )
-
-                account_name = (
-                    self.account_combo
-                    .get()
-                    .strip()
-                )
-
-                if not transaction_date or not description:
-                    messagebox.showwarning(
-                        "Missing Information",
-                        "Please complete the purchase transaction fields.",
-                        parent=self
-                    )
-                    return
-
-                date.fromisoformat(
-                    transaction_date
-                )
-
-                account_id = self.account_map.get(
-                    account_name
-                )
-
-                if account_id is None:
-                    messagebox.showwarning(
-                        "Account Required",
-                        "Please select an active payment account.",
-                        parent=self
-                    )
-                    return
+            if self.item is None:
+                (
+                    name,
+                    purchase_cost,
+                    acquired_date,
+                    notes,
+                    transaction_date,
+                    description,
+                    account_id,
+                ) = values
 
                 inventory_service.buy_inventory(
-                    transaction_date,
+                    transaction_date.isoformat(),
                     description,
                     account_id,
                     name,
                     purchase_cost,
-                    acquired_date,
-                    notes
+                    acquired_date.isoformat(),
+                    notes,
+                )
+
+                show_save_success(
+                    self,
+                    "Inventory item",
                 )
 
             else:
+                (
+                    name,
+                    purchase_cost,
+                    acquired_date,
+                    notes,
+                ) = values
+
                 inventory_service.update_inventory_item(
                     self.item[0],
                     name,
                     purchase_cost,
-                    acquired_date,
+                    acquired_date.isoformat(),
                     self.item[3],
                     self.item[4],
                     self.item[6],
-                    notes
+                    notes,
+                )
+
+                show_update_success(
+                    self,
+                    "Inventory item",
                 )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Save Error",
-                f"Unable to save the inventory item.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Save Inventory",
+                exc,
             )
             return
 
@@ -814,363 +641,152 @@ class InventoryForm(ctk.CTkToplevel):
         self.destroy()
 
 
-class SellInventoryForm(ctk.CTkToplevel):
+class SellInventoryForm(FormWindow):
     def __init__(
         self,
         master,
         item,
-        on_saved=None
+        on_saved=None,
     ):
-        super().__init__(master)
-
         self.item = item
         self.on_saved = on_saved
 
-        self.title("Sell Inventory Item")
-        self.geometry("560x560")
-        self.resizable(False, False)
-        self.configure(fg_color=CONTENT)
-
-        self.transient(master)
-        self.grab_set()
+        super().__init__(
+            master,
+            "Sell Inventory Item",
+            width=560,
+            height=620,
+        )
 
         self._build()
 
     def _build(self):
-        panel = ctk.CTkFrame(
-            self,
-            fg_color=PANEL,
-            corner_radius=PANEL_RADIUS
+        self.add_description(
+            f"Sell {self.item[1]} and record the sale proceeds."
         )
 
-        panel.pack(
-            fill="both",
-            expand=True,
-            padx=18,
-            pady=18
-        )
-
-        ctk.CTkLabel(
-            panel,
-            text="Sell Inventory Item",
-            font=FONT_SECTION,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(24, 4)
-        )
-
-        ctk.CTkLabel(
-            panel,
-            text=(
-                f"{self.item[1]} · "
-                f"Cost: {self._money(self.item[2])}"
-            ),
-            font=FONT_BODY,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(0, 18)
-        )
-
-        self.sale_date_entry = self._field(
-            panel,
+        self.sale_date_entry = self.add_date_field(
             "Sale Date",
-            date.today().isoformat()
+            "",
         )
 
-        self.description_entry = self._field(
-            panel,
+        self.description_entry = self.add_field(
             "Sale Description",
-            f"Sale of {self.item[1]}"
+            f"Sale of {self.item[1]}",
         )
 
-        self.price_entry = self._field(
-            panel,
+        self.sale_price_entry = self.add_currency_field(
             "Sale Price",
-            ""
+            "",
         )
 
         accounts = [
-            account
+            f"{account[0]} - {account[1]}"
             for account in account_service.get_accounts()
             if account[3]
         ]
 
-        self.account_map = {
-            account[1]: account[0]
-            for account in accounts
-        }
-
-        account_names = list(
-            self.account_map.keys()
-        )
-
-        self.account_combo = self._combo(
-            panel,
+        self.deposit_account_selector = self.add_selector(
             "Deposit Account",
-            account_names or ["No accounts available"],
-            (
-                account_names[0]
-                if account_names
-                else "No accounts available"
-            )
+            accounts,
         )
 
-        buttons = ctk.CTkFrame(
-            panel,
-            fg_color="transparent"
+        self.add_buttons(
+            save_text="Sell Item",
+            save_command=self._save,
         )
 
-        buttons.pack(
-            fill="x",
-            padx=28,
-            pady=(20, 24)
-        )
-
-        buttons.grid_columnconfigure(
-            (0, 1),
-            weight=1
-        )
-
-        ctk.CTkButton(
-            buttons,
-            text="Cancel",
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=PANEL_HOVER,
-            hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            font=FONT_BODY_BOLD,
-            command=self.destroy
-        ).grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=(0, 6)
-        )
-
-        ctk.CTkButton(
-            buttons,
-            text="Sell Item",
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=SUCCESS,
-            hover_color="#285B4B",
-            text_color=TEXT_LIGHT,
-            font=FONT_BODY_BOLD,
-            command=self._save
-        ).grid(
-            row=0,
-            column=1,
-            sticky="ew",
-            padx=(6, 0)
-        )
-
-    def _field(self, parent, label, value):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
-        )
-
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
-
-        entry = ctk.CTkEntry(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT
-        )
-
-        entry.pack(fill="x")
-
-        if value:
-            entry.insert(
-                0,
-                str(value)
+    def _validate(self):
+        try:
+            sale_date = self.get_date_value(
+                self.sale_date_entry
             )
 
-        return entry
+            description = validate_length(
+                require_text(
+                    self.description_entry.get(),
+                    "Sale description",
+                ),
+                "Sale description",
+                min_length=1,
+                max_length=200,
+            )
 
-    def _combo(
-        self,
-        parent,
-        label,
-        values,
-        selected
-    ):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
+            sale_price = self.get_currency_value(
+                self.sale_price_entry
+            )
 
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
-        )
+            if sale_price <= 0:
+                raise ValueError(
+                    "Sale price must be greater than zero."
+                )
 
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
+            account = self.deposit_account_selector.get()
 
-        combo = ctk.CTkComboBox(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            button_color=PANEL_HOVER,
-            button_hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            dropdown_fg_color=INPUT_BG,
-            dropdown_hover_color=PANEL_HOVER,
-            dropdown_text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT,
-            state="readonly",
-            values=values
-        )
+            if not account:
+                raise ValueError(
+                    "Deposit account is required."
+                )
 
-        combo.pack(fill="x")
-        combo.set(selected)
+            account_id = int(
+                account.split(" - ", 1)[0]
+            )
 
-        return combo
+            return (
+                sale_date,
+                description,
+                sale_price,
+                account_id,
+            )
 
-    @staticmethod
-    def _money(value):
-        return f"₱{value / 100:,.2f}"
+        except ValueError as exc:
+            show_warning(
+                self,
+                "Validation Error",
+                str(exc),
+            )
+            return None
 
     def _save(self):
-        sale_date = (
-            self.sale_date_entry
-            .get()
-            .strip()
-        )
+        values = self._validate()
 
-        description = (
-            self.description_entry
-            .get()
-            .strip()
-        )
-
-        price_text = (
-            self.price_entry
-            .get()
-            .strip()
-            .replace(",", "")
-        )
-
-        account_name = (
-            self.account_combo
-            .get()
-            .strip()
-        )
-
-        if not sale_date or not description or not price_text:
-            messagebox.showwarning(
-                "Missing Information",
-                "Please complete the required fields.",
-                parent=self
-            )
+        if values is None:
             return
 
-        if not self.account_map:
-            messagebox.showwarning(
-                "Account Required",
-                "An active account is required to record the sale proceeds.",
-                parent=self
-            )
-            return
-
-        try:
-            date.fromisoformat(sale_date)
-
-            sale_price = int(
-                round(
-                    float(price_text) * 100
-                )
-            )
-
-        except ValueError:
-            messagebox.showwarning(
-                "Invalid Information",
-                "Use YYYY-MM-DD for the date and a valid numeric sale price.",
-                parent=self
-            )
-            return
-
-        if sale_price <= 0:
-            messagebox.showwarning(
-                "Invalid Sale Price",
-                "Sale price must be greater than zero.",
-                parent=self
-            )
-            return
-
-        account_id = self.account_map.get(
-            account_name
-        )
-
-        if account_id is None:
-            messagebox.showwarning(
-                "Account Required",
-                "Please select an active account.",
-                parent=self
-            )
-            return
+        (
+            sale_date,
+            description,
+            sale_price,
+            account_id,
+        ) = values
 
         try:
             transaction_id, profit = (
                 inventory_service.sell_inventory(
-                    sale_date,
+                    sale_date.isoformat(),
                     description,
                     account_id,
                     self.item[0],
                     sale_price,
-                    sale_date
+                    sale_date.isoformat(),
                 )
             )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Sale Error",
-                f"Unable to sell the inventory item.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Sell Inventory",
+                exc,
             )
             return
 
-        messagebox.showinfo(
+        show_info(
+            self,
             "Item Sold",
             (
                 f"{self.item[1]} was sold successfully.\n\n"
-                f"Profit: {self._money(profit)}"
+                f"Profit: {format_currency(profit)}"
             ),
-            parent=self
         )
 
         if self.on_saved:

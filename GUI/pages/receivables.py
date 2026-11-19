@@ -1,32 +1,36 @@
 from datetime import date
-from tkinter import messagebox
+
 import customtkinter as ctk
 
-from services import receivable_service, account_service
+from GUI.components.buttons import Buttons
+from GUI.components.forms import FormWindow
+from GUI.components.selectors import Selector
 from GUI.components.tables import Tables
 from GUI.styles.colors import (
     CONTENT,
-    PANEL,
-    PANEL_HOVER,
     TEXT_DARK,
-    TEXT_LIGHT,
-    SUCCESS,
-    DANGER,
-    INPUT_BG,
-    INPUT_BORDER,
 )
 from GUI.styles.theme import (
     CONTENT_PAD_X,
     CONTENT_PAD_Y,
-    PANEL_RADIUS,
-    BUTTON_RADIUS,
-    INPUT_RADIUS,
-    FONT_SECTION,
-    FONT_BODY,
-    FONT_BODY_BOLD,
-    FONT_FORM_LABEL,
-    FONT_FORM_INPUT,
+    FONT_PAGE_TITLE,
 )
+from GUI.utils.feedback import (
+    show_warning,
+    show_operation_error,
+    show_save_success,
+    show_update_success,
+    show_info,
+)
+from GUI.utils.formatters import (
+    format_currency,
+    format_date,
+)
+from GUI.utils.validation import (
+    require_text,
+    validate_length,
+)
+from services import receivable_service, account_service, people_service
 
 
 class ReceivablesPage(ctk.CTkFrame):
@@ -34,25 +38,38 @@ class ReceivablesPage(ctk.CTkFrame):
         super().__init__(
             master,
             corner_radius=0,
-            fg_color=CONTENT
+            fg_color=CONTENT,
         )
 
         self.navigate = navigate
         self.accounts = []
-        self.account_map = {}
+        self.account_options = []
+        self.people = []
+        self.person_options = []
         self.selected_receivable_id = None
 
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_columnconfigure(
+            0,
+            weight=1,
+        )
 
+        self.grid_rowconfigure(
+            1,
+            weight=1,
+        )
+
+        self._build()
+        self.refresh()
+
+    def _build(self):
         self._build_header()
         self._build_table()
-        self.refresh()
 
     def _build_header(self):
         header = ctk.CTkFrame(
             self,
-            fg_color="transparent"
+            fg_color="transparent",
+            corner_radius=0,
         )
 
         header.grid(
@@ -60,129 +77,143 @@ class ReceivablesPage(ctk.CTkFrame):
             column=0,
             sticky="ew",
             padx=CONTENT_PAD_X,
-            pady=(CONTENT_PAD_Y, 10)
+            pady=(CONTENT_PAD_Y, 12),
         )
 
-        header.grid_columnconfigure(0, weight=1)
+        header.grid_columnconfigure(
+            0,
+            weight=1,
+        )
 
         ctk.CTkLabel(
             header,
             text="Receivables",
-            font=FONT_SECTION,
-            text_color=TEXT_DARK
+            font=FONT_PAGE_TITLE,
+            text_color=TEXT_DARK,
         ).grid(
             row=0,
             column=0,
-            sticky="w"
+            sticky="w",
         )
 
-        actions = ctk.CTkFrame(
+        self.header_buttons = Buttons(
             header,
-            fg_color="transparent"
+            actions=[
+                {
+                    "label": "Add Receivable",
+                    "command": self._open_add,
+                    "style": "primary",
+                    "width": 140,
+                    "height": 40,
+                },
+                {
+                    "label": "Payment",
+                    "command": self._open_payment,
+                    "style": "default",
+                    "width": 80,
+                    "height": 40,
+                },
+                {
+                    "label": "Edit",
+                    "command": self._open_edit,
+                    "style": "default",
+                    "width": 80,
+                    "height": 40,
+                },
+                {
+                    "label": "View",
+                    "command": self._open_view,
+                    "style": "default",
+                    "width": 80,
+                    "height": 40,
+                },
+                {
+                    "label": "Refresh",
+                    "command": self.refresh,
+                    "style": "default",
+                    "width": 90,
+                    "height": 40,
+                },
+            ],
+            columns=5,
+            height=40,
+            padx=3,
+            pady=0,
         )
 
-        actions.grid(
+        self.header_buttons.grid(
             row=0,
             column=1,
-            sticky="e"
+            sticky="e",
         )
-
-        buttons = [
-            ("Add Receivable", self._open_add_form),
-            ("Record Payment", self._open_payment_form),
-            ("Edit Receivable", self._open_edit_form),
-            ("Refresh", self.refresh),
-        ]
-
-        for index, (text, command) in enumerate(buttons):
-            ctk.CTkButton(
-                actions,
-                text=text,
-                width=140,
-                height=44,
-                corner_radius=BUTTON_RADIUS,
-                fg_color=PANEL,
-                hover_color=PANEL_HOVER,
-                text_color=TEXT_DARK,
-                font=FONT_BODY_BOLD,
-                command=command
-            ).grid(
-                row=0,
-                column=index,
-                padx=4,
-                pady=2
-            )
 
     def _build_table(self):
-        panel = ctk.CTkFrame(
+        self.table = Tables(
             self,
-            fg_color=PANEL,
-            corner_radius=PANEL_RADIUS
+            columns=[
+                {
+                    "key": "person_name",
+                    "label": "PERSON",
+                    "weight": 2,
+                    "minsize": 140,
+                },
+                {
+                    "key": "description",
+                    "label": "DESCRIPTION",
+                    "weight": 3,
+                    "minsize": 180,
+                },
+                {
+                    "key": "original_amount",
+                    "label": "ORIGINAL AMOUNT",
+                    "weight": 1,
+                    "minsize": 140,
+                    "anchor": "e",
+                },
+                {
+                    "key": "paid_amount",
+                    "label": "PAID AMOUNT",
+                    "weight": 1,
+                    "minsize": 130,
+                    "anchor": "e",
+                },
+                {
+                    "key": "balance",
+                    "label": "BALANCE",
+                    "weight": 1,
+                    "minsize": 130,
+                    "anchor": "e",
+                },
+                {
+                    "key": "created",
+                    "label": "CREATED",
+                    "weight": 1,
+                    "minsize": 110,
+                },
+                {
+                    "key": "due",
+                    "label": "DUE",
+                    "weight": 1,
+                    "minsize": 110,
+                },
+                {
+                    "key": "status",
+                    "label": "STATUS",
+                    "weight": 1,
+                    "minsize": 100,
+                    "anchor": "center",
+                },
+            ],
+            empty_text="No receivables yet",
+            command=self._select_receivable,
         )
 
-        panel.grid(
+        self.table.grid(
             row=1,
             column=0,
             sticky="nsew",
             padx=CONTENT_PAD_X,
-            pady=(0, CONTENT_PAD_Y)
-        )
-
-        panel.grid_columnconfigure(0, weight=1)
-        panel.grid_rowconfigure(0, weight=1)
-
-        self.table = Tables(
-            panel,
-            columns=[
-                {
-                    "label": "PERSON ID",
-                    "weight": 1,
-                    "minsize": 100
-                },
-                {
-                    "label": "DESCRIPTION",
-                    "weight": 3,
-                    "minsize": 180
-                },
-                {
-                    "label": "ORIGINAL AMOUNT",
-                    "weight": 1,
-                    "minsize": 140,
-                    "anchor": "e"
-                },
-                {
-                    "label": "BALANCE",
-                    "weight": 1,
-                    "minsize": 140,
-                    "anchor": "e"
-                },
-                {
-                    "label": "CREATED",
-                    "weight": 1,
-                    "minsize": 110
-                },
-                {
-                    "label": "DUE",
-                    "weight": 1,
-                    "minsize": 110
-                },
-                {
-                    "label": "STATUS",
-                    "weight": 1,
-                    "minsize": 100,
-                    "anchor": "center"
-                },
-            ],
-            empty_text="No receivables yet",
-            on_double_click=self._show_receivable
-        )
-
-        self.table.grid(
-            row=0,
-            column=0,
-            sticky="nsew",
-            padx=18,
-            pady=18
+            pady=(0, CONTENT_PAD_Y),
         )
 
     def refresh(self):
@@ -193,197 +224,443 @@ class ReceivablesPage(ctk.CTkFrame):
                 if account[3]
             ]
 
-            self.account_map = {
-                account[1]: account[0]
+            self.account_options = [
+                f"{account[0]} - {account[1]}"
                 for account in self.accounts
-            }
+            ]
+
+            self.people = people_service.get_people()
+
+            self.person_options = [
+                f"{person[0]} - {person[1]}"
+                for person in self.people
+            ]
 
             receivables = receivable_service.get_receivables()
 
-        except Exception as exc:
-            messagebox.showerror(
-                "Load Error",
-                f"Unable to load receivables.\n\n{exc}",
-                parent=self
-            )
-            return
+            rows = []
 
-        self.table.clear()
+            for receivable in receivables:
+                (
+                    receivable_id,
+                    person_id,
+                    description,
+                    original_amount,
+                    date_created,
+                    due_date,
+                    status,
+                ) = receivable
 
-        for receivable in receivables:
-            (
-                receivable_id,
-                person_id,
-                description,
-                original_amount,
-                date_created,
-                due_date,
-                status,
-            ) = receivable
-
-            try:
                 balance = receivable_service.get_receivable_balance(
                     receivable_id
                 )
-            except Exception:
-                balance = original_amount
 
-            self.table.add_row(
-                values=(
-                    person_id,
-                    description,
-                    self._money(original_amount),
-                    self._money(balance),
-                    date_created,
-                    due_date or "-",
-                    status,
-                ),
-                row_id=receivable_id,
-                cell_styles={
-                    2: {
-                        "font": FONT_BODY_BOLD,
-                        "text_color": TEXT_DARK
-                    },
-                    3: {
-                        "font": FONT_BODY_BOLD,
-                        "text_color": (
-                            SUCCESS
-                            if balance == 0
-                            else DANGER
-                        )
-                    },
-                    6: {
-                        "font": FONT_BODY_BOLD,
-                        "text_color": (
-                            SUCCESS
-                            if status == "PAID"
-                            else TEXT_DARK
-                        )
-                    },
-                }
+                paid_amount = original_amount - balance
+
+                rows.append(
+                    {
+                        "id": receivable_id,
+                        "person_name": self._get_person_name(person_id),
+                        "description": description,
+                        "original_amount": format_currency(
+                            original_amount
+                        ),
+                        "paid_amount": format_currency(
+                            paid_amount
+                        ),
+                        "balance": format_currency(
+                            balance
+                        ),
+                        "created": format_date(
+                            date_created
+                        ),
+                        "due": (
+                            format_date(due_date)
+                            if due_date
+                            else "-"
+                        ),
+                        "status": status,
+                    }
+                )
+
+            self.table.set_rows(rows)
+
+            if self.selected_receivable_id is not None:
+                if not any(
+                    row["id"] == self.selected_receivable_id
+                    for row in rows
+                ):
+                    self.selected_receivable_id = None
+
+        except Exception as exc:
+            show_operation_error(
+                self,
+                "Load Receivables",
+                exc,
             )
 
-    def _selected_receivable(self):
+    def _get_person_name(self, person_id):
+        if person_id is None:
+            return "-"
+        for person in self.people:
+            if person[0] == person_id:
+                return person[1]
+        return "-"
+
+    def _select_receivable(self, receivable):
+        if not receivable:
+            return
+
+        if isinstance(receivable, dict):
+            self.selected_receivable_id = receivable.get("id")
+        else:
+            self.selected_receivable_id = receivable
+
+    def _get_selected_receivable(self):
         if self.selected_receivable_id is None:
-            messagebox.showinfo(
-                "Select Receivable",
-                "Double-click a receivable row first, then use the action buttons.",
-                parent=self
-            )
             return None
 
         try:
-            return receivable_service.get_receivable_by_id(
+            receivable = receivable_service.get_receivable_by_id(
                 self.selected_receivable_id
             )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Receivable Error",
-                f"Unable to load the receivable.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Load Receivable",
+                exc,
             )
             return None
 
-    def _open_add_form(self):
-        ReceivableForm(
-            self,
-            mode="add",
-            account_map=self.account_map,
-            on_saved=self.refresh
-        )
+        if not receivable:
+            show_warning(
+                self,
+                "Receivable Not Found",
+                "The selected receivable no longer exists.",
+            )
+            self.selected_receivable_id = None
+            self.refresh()
+            return None
 
-    def _open_edit_form(self):
-        receivable = self._selected_receivable()
+        return receivable
 
-        if receivable is None:
+    def _get_rows(self):
+        rows = self.table.get_rows()
+
+        if not rows:
+            show_warning(
+                self,
+                "No Receivables",
+                "There are no receivables available.",
+            )
+            return None
+
+        return rows
+
+    def _open_add(self):
+        if not self.account_options:
+            show_warning(
+                self,
+                "No Accounts",
+                "There are no active accounts available.",
+            )
             return
 
-        if receivable[6] == "PAID":
-            messagebox.showwarning(
+        if not self.person_options:
+            show_warning(
+                self,
+                "No People",
+                "There are no people available.",
+            )
+            return
+
+        ReceivableForm(
+            self,
+            account_options=self.account_options,
+            person_options=self.person_options,
+            on_saved=self.refresh,
+        )
+
+    def _open_edit(self):
+        selected = self._get_selected_receivable()
+
+        if selected is not None:
+            self._edit_selected(selected)
+            return
+
+        rows = self._get_rows()
+
+        if rows is None:
+            return
+
+        Selector(
+            self,
+            title="Select Receivable",
+            items=rows,
+            display_key="description",
+            value_key="id",
+            description="Choose the receivable you want to edit.",
+            select_button_text="Edit Receivable",
+            on_selected=self._edit_selected,
+        )
+
+    def _edit_selected(self, receivable):
+        if not receivable:
+            return
+
+        if isinstance(receivable, dict):
+            receivable_id = receivable.get("id")
+
+            try:
+                selected = receivable_service.get_receivable_by_id(
+                    receivable_id
+                )
+
+            except Exception as exc:
+                show_operation_error(
+                    self,
+                    "Load Receivable",
+                    exc,
+                )
+                return
+
+        else:
+            selected = receivable
+
+        if not selected:
+            show_warning(
+                self,
+                "Receivable Not Found",
+                "The selected receivable no longer exists.",
+            )
+            self.selected_receivable_id = None
+            self.refresh()
+            return
+
+        self.selected_receivable_id = selected[0]
+
+        if selected[6] == "PAID":
+            show_warning(
+                self,
                 "Unavailable",
                 "A paid receivable cannot be edited.",
-                parent=self
+            )
+            return
+
+        if not self.person_options:
+            show_warning(
+                self,
+                "No People",
+                "There are no people available.",
             )
             return
 
         ReceivableForm(
             self,
-            mode="edit",
-            receivable=receivable,
-            account_map=self.account_map,
-            on_saved=self.refresh
+            receivable=selected,
+            account_options=self.account_options,
+            person_options=self.person_options,
+            on_saved=self.refresh,
         )
 
-    def _open_payment_form(self):
-        receivable = self._selected_receivable()
+    def _open_payment(self):
+        selected = self._get_selected_receivable()
 
-        if receivable is None:
+        if selected is not None:
+            self._payment_selected(selected)
             return
 
-        if receivable[6] == "PAID":
-            messagebox.showwarning(
+        rows = self._get_rows()
+
+        if rows is None:
+            return
+
+        if not self.account_options:
+            show_warning(
+                self,
+                "No Accounts",
+                "There are no active accounts available.",
+            )
+            return
+
+        Selector(
+            self,
+            title="Select Receivable",
+            items=rows,
+            display_key="description",
+            value_key="id",
+            description="Choose the receivable for the payment.",
+            select_button_text="Receive Payment",
+            on_selected=self._payment_selected,
+        )
+
+    def _payment_selected(self, receivable):
+        if not receivable:
+            return
+
+        if isinstance(receivable, dict):
+            receivable_id = receivable.get("id")
+
+            try:
+                selected = receivable_service.get_receivable_by_id(
+                    receivable_id
+                )
+
+                balance = receivable_service.get_receivable_balance(
+                    receivable_id
+                )
+
+            except Exception as exc:
+                show_operation_error(
+                    self,
+                    "Load Receivable Balance",
+                    exc,
+                )
+                return
+
+        else:
+            selected = receivable
+
+            try:
+                balance = receivable_service.get_receivable_balance(
+                    selected[0]
+                )
+
+            except Exception as exc:
+                show_operation_error(
+                    self,
+                    "Load Receivable Balance",
+                    exc,
+                )
+                return
+
+        if not selected:
+            show_warning(
+                self,
+                "Receivable Not Found",
+                "The selected receivable no longer exists.",
+            )
+            self.selected_receivable_id = None
+            self.refresh()
+            return
+
+        self.selected_receivable_id = selected[0]
+
+        if selected[6] == "PAID":
+            show_warning(
+                self,
                 "Already Paid",
                 "This receivable has already been fully paid.",
-                parent=self
-            )
-            return
-
-        try:
-            balance = receivable_service.get_receivable_balance(
-                receivable[0]
-            )
-
-        except Exception as exc:
-            messagebox.showerror(
-                "Balance Error",
-                f"Unable to load the receivable balance.\n\n{exc}",
-                parent=self
             )
             return
 
         if balance <= 0:
-            messagebox.showwarning(
+            show_warning(
+                self,
                 "No Balance",
                 "This receivable has no remaining balance.",
-                parent=self
+            )
+            return
+
+        if not self.account_options:
+            show_warning(
+                self,
+                "No Accounts",
+                "There are no active accounts available.",
             )
             return
 
         PaymentForm(
             self,
-            receivable,
-            balance,
-            self.account_map,
-            on_saved=self.refresh
+            receivable=selected,
+            balance=balance,
+            account_options=self.account_options,
+            on_saved=self.refresh,
         )
 
-    def _show_receivable(self, receivable_id):
-        self.selected_receivable_id = receivable_id
+    def _open_view(self):
+        selected = self._get_selected_receivable()
 
-        try:
-            receivable = receivable_service.get_receivable_by_id(
-                receivable_id
-            )
-
-            balance = receivable_service.get_receivable_balance(
-                receivable_id
-            )
-
-            history = receivable_service.get_receivable_balance_history(
-                receivable_id
-            )
-
-        except Exception as exc:
-            messagebox.showerror(
-                "Receivable Error",
-                f"Unable to load receivable details.\n\n{exc}",
-                parent=self
-            )
+        if selected is not None:
+            self._view_selected(selected)
             return
 
+        rows = self._get_rows()
+
+        if rows is None:
+            return
+
+        Selector(
+            self,
+            title="Select Receivable",
+            items=rows,
+            display_key="description",
+            value_key="id",
+            description="Choose the receivable you want to view.",
+            select_button_text="View Receivable",
+            on_selected=self._view_selected,
+        )
+
+    def _view_selected(self, receivable):
         if not receivable:
             return
+
+        if isinstance(receivable, dict):
+            receivable_id = receivable.get("id")
+
+            try:
+                selected = receivable_service.get_receivable_by_id(
+                    receivable_id
+                )
+
+                balance = receivable_service.get_receivable_balance(
+                    receivable_id
+                )
+
+                history = receivable_service.get_receivable_balance_history(
+                    receivable_id
+                )
+
+            except Exception as exc:
+                show_operation_error(
+                    self,
+                    "Load Receivable Details",
+                    exc,
+                )
+                return
+
+        else:
+            selected = receivable
+
+            try:
+                balance = receivable_service.get_receivable_balance(
+                    selected[0]
+                )
+
+                history = receivable_service.get_receivable_balance_history(
+                    selected[0]
+                )
+
+            except Exception as exc:
+                show_operation_error(
+                    self,
+                    "Load Receivable Details",
+                    exc,
+                )
+                return
+
+        if not selected:
+            show_warning(
+                self,
+                "Receivable Not Found",
+                "The selected receivable no longer exists.",
+            )
+            self.selected_receivable_id = None
+            self.refresh()
+            return
+
+        self.selected_receivable_id = selected[0]
 
         (
             _,
@@ -393,12 +670,14 @@ class ReceivablesPage(ctk.CTkFrame):
             date_created,
             due_date,
             status,
-        ) = receivable
+        ) = selected
+
+        paid_amount = original_amount - balance
 
         history_text = "\n".join(
             (
-                f"{row[2]}  -  "
-                f"{self._money(row[3])}  -  "
+                f"{format_date(row[2])}  -  "
+                f"{format_currency(row[3])}  -  "
                 f"{row[4]}"
             )
             for row in history
@@ -410,427 +689,264 @@ class ReceivablesPage(ctk.CTkFrame):
         details = (
             f"Person ID: {person_id}\n"
             f"Description: {description}\n"
-            f"Original Amount: {self._money(original_amount)}\n"
-            f"Current Balance: {self._money(balance)}\n"
-            f"Created: {date_created}\n"
-            f"Due Date: {due_date or 'None'}\n"
+            f"Original Amount: {format_currency(original_amount)}\n"
+            f"Paid Amount: {format_currency(paid_amount)}\n"
+            f"Remaining Balance: {format_currency(balance)}\n"
+            f"Created: {format_date(date_created)}\n"
+            f"Due Date: "
+            f"{format_date(due_date) if due_date else 'None'}\n"
             f"Status: {status}\n\n"
             f"Balance History:\n"
             f"{history_text}"
         )
 
-        messagebox.showinfo(
+        show_info(
+            self,
             "Receivable Details",
             details,
-            parent=self
         )
 
-    @staticmethod
-    def _money(value):
-        return f"₱{value / 100:,.2f}"
 
-
-class ReceivableForm(ctk.CTkToplevel):
+class ReceivableForm(FormWindow):
     def __init__(
         self,
         master,
-        mode="add",
         receivable=None,
-        account_map=None,
-        on_saved=None
+        account_options=None,
+        person_options=None,
+        on_saved=None,
     ):
-        super().__init__(master)
-
-        self.mode = mode
         self.receivable = receivable
-        self.account_map = account_map or {}
+        self.account_options = account_options or []
+        self.person_options = person_options or []
         self.on_saved = on_saved
 
-        self.title(
-            "Add Receivable"
-            if mode == "add"
-            else "Edit Receivable"
+        super().__init__(
+            master,
+            "Edit Receivable"
+            if receivable
+            else "Add Receivable",
+            width=560,
+            height=720 if not receivable else 680,
         )
-
-        self.geometry("580x700")
-        self.resizable(False, False)
-        self.configure(fg_color=CONTENT)
-
-        self.transient(master)
-        self.grab_set()
 
         self._build()
 
+    def _get_person_value(self):
+        if not self.receivable:
+            return None
+
+        person_id = self.receivable[1]
+
+        for option in self.person_options:
+            if option.startswith(f"{person_id} - "):
+                return option
+
+        return None
+
     def _build(self):
-        panel = ctk.CTkFrame(
-            self,
-            fg_color=PANEL,
-            corner_radius=PANEL_RADIUS
+        self.add_description(
+            "Enter the receivable details below."
         )
 
-        panel.pack(
-            fill="both",
-            expand=True,
-            padx=18,
-            pady=18
+        self.person_selector = self.add_selector(
+            "Person",
+            self.person_options,
+            value=self._get_person_value(),
         )
 
-        ctk.CTkLabel(
-            panel,
-            text=(
-                "Add Receivable"
-                if self.mode == "add"
-                else "Edit Receivable"
-            ),
-            font=FONT_SECTION,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(24, 4)
-        )
-
-        ctk.CTkLabel(
-            panel,
-            text="Record the receivable details below.",
-            font=FONT_BODY,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(0, 18)
-        )
-
-        self.person_entry = self._field(
-            panel,
-            "Person ID",
-            self.receivable[1]
-            if self.receivable
-            else ""
-        )
-
-        self.description_entry = self._field(
-            panel,
+        self.description_entry = self.add_field(
             "Description",
-            self.receivable[2]
-            if self.receivable
-            else ""
-        )
-
-        self.amount_entry = self._field(
-            panel,
-            "Original Amount",
-            self._amount_value(self.receivable[3])
-            if self.receivable
-            else ""
-        )
-
-        self.created_entry = self._field(
-            panel,
-            "Date Created",
-            self.receivable[4]
-            if self.receivable
-            else date.today().isoformat()
-        )
-
-        self.due_entry = self._field(
-            panel,
-            "Due Date",
-            self.receivable[5]
-            if self.receivable and self.receivable[5]
-            else ""
-        )
-
-        if self.mode == "add":
-            account_names = list(
-                self.account_map.keys()
-            )
-
-            self.account_combo = self._combo(
-                panel,
-                "Account",
-                account_names or ["No accounts available"],
-                (
-                    account_names[0]
-                    if account_names
-                    else "No accounts available"
-                )
-            )
-
-        buttons = ctk.CTkFrame(
-            panel,
-            fg_color="transparent"
-        )
-
-        buttons.pack(
-            fill="x",
-            padx=28,
-            pady=(20, 24)
-        )
-
-        buttons.grid_columnconfigure(
-            (0, 1),
-            weight=1
-        )
-
-        ctk.CTkButton(
-            buttons,
-            text="Cancel",
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=PANEL_HOVER,
-            hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            font=FONT_BODY_BOLD,
-            command=self.destroy
-        ).grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=(0, 6)
-        )
-
-        ctk.CTkButton(
-            buttons,
-            text=(
-                "Save Receivable"
-                if self.mode == "add"
-                else "Save Changes"
+            (
+                self.receivable[2]
+                if self.receivable
+                else ""
             ),
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=TEXT_DARK,
-            hover_color="#285B4B",
-            text_color=TEXT_LIGHT,
-            font=FONT_BODY_BOLD,
-            command=self._save
-        ).grid(
-            row=0,
-            column=1,
-            sticky="ew",
-            padx=(6, 0)
         )
 
-    def _field(self, parent, label, value):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
+        self.amount_entry = self.add_currency_field(
+            "Original Amount",
+            (
+                self.receivable[3]
+                if self.receivable
+                else ""
+            ),
         )
 
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
+        self.created_entry = self.add_date_field(
+            "Date Created",
+            (
+                self.receivable[4]
+                if self.receivable
+                else date.today()
+            ),
         )
 
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
+        self.due_entry = self.add_date_field(
+            "Due Date",
+            (
+                self.receivable[5]
+                if self.receivable and self.receivable[5]
+                else ""
+            ),
         )
 
-        entry = ctk.CTkEntry(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT
-        )
-
-        entry.pack(fill="x")
-
-        if value is not None and value != "":
-            entry.insert(
-                0,
-                str(value)
+        if not self.receivable:
+            self.account_selector = self.add_selector(
+                "Account",
+                self.account_options,
             )
 
-        return entry
-
-    def _combo(
-        self,
-        parent,
-        label,
-        values,
-        selected
-    ):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
+        self.add_buttons(
+            save_text=(
+                "Save Changes"
+                if self.receivable
+                else "Save Receivable"
+            ),
+            save_command=self._save,
         )
 
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
-        )
+    def _validate(self):
+        try:
+            person = self.person_selector.get()
 
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
+            if not person or person == "No options available":
+                raise ValueError(
+                    "Person is required."
+                )
 
-        combo = ctk.CTkComboBox(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            button_color=PANEL_HOVER,
-            button_hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            dropdown_fg_color=INPUT_BG,
-            dropdown_hover_color=PANEL_HOVER,
-            dropdown_text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT,
-            state="readonly",
-            values=values
-        )
+            person_id = int(
+                person.split(" - ", 1)[0]
+            )
 
-        combo.pack(fill="x")
-        combo.set(selected)
+            description = validate_length(
+                require_text(
+                    self.description_entry.get(),
+                    "Description",
+                ),
+                "Description",
+                min_length=1,
+                max_length=200,
+            )
 
-        return combo
+            original_amount = self.get_currency_value(
+                self.amount_entry
+            )
 
-    @staticmethod
-    def _amount_value(cents):
-        return f"{cents / 100:.2f}"
+            if original_amount <= 0:
+                raise ValueError(
+                    "Original amount must be greater than zero."
+                )
+
+            created_date = self.get_date_value(
+                self.created_entry
+            )
+
+            due_text = self.due_entry.get().strip()
+
+            due_date = (
+                self.get_date_value(
+                    self.due_entry
+                )
+                if due_text
+                else None
+            )
+
+            if due_date and due_date < created_date:
+                raise ValueError(
+                    "Due date cannot be before the creation date."
+                )
+
+            account_id = None
+
+            if not self.receivable:
+                account = self.account_selector.get()
+
+                if not account or account == "No options available":
+                    raise ValueError(
+                        "Account is required."
+                    )
+
+                account_id = int(
+                    account.split(" - ", 1)[0]
+                )
+
+            return (
+                person_id,
+                description,
+                original_amount,
+                created_date,
+                due_date,
+                account_id,
+            )
+
+        except ValueError as exc:
+            show_warning(
+                self,
+                "Validation Error",
+                str(exc),
+            )
+            return None
 
     def _save(self):
-        person_text = (
-            self.person_entry
-            .get()
-            .strip()
-        )
+        values = self._validate()
 
-        description = (
-            self.description_entry
-            .get()
-            .strip()
-        )
-
-        amount_text = (
-            self.amount_entry
-            .get()
-            .strip()
-            .replace(",", "")
-        )
-
-        created_date = (
-            self.created_entry
-            .get()
-            .strip()
-        )
-
-        due_date = (
-            self.due_entry
-            .get()
-            .strip()
-            or None
-        )
-
-        if (
-            not person_text
-            or not description
-            or not amount_text
-            or not created_date
-        ):
-            messagebox.showwarning(
-                "Missing Information",
-                "Please complete the required fields.",
-                parent=self
-            )
+        if values is None:
             return
+
+        (
+            person_id,
+            description,
+            original_amount,
+            created_date,
+            due_date,
+            account_id,
+        ) = values
 
         try:
-            person_id = int(person_text)
-
-            amount = int(
-                round(
-                    float(amount_text) * 100
-                )
-            )
-
-            date.fromisoformat(
-                created_date
-            )
-
-            if due_date:
-                date.fromisoformat(
-                    due_date
-                )
-
-        except ValueError:
-            messagebox.showwarning(
-                "Invalid Information",
-                "Person ID and amount must be valid. Dates must use YYYY-MM-DD.",
-                parent=self
-            )
-            return
-
-        if amount <= 0:
-            messagebox.showwarning(
-                "Invalid Amount",
-                "The receivable amount must be greater than zero.",
-                parent=self
-            )
-            return
-
-        try:
-            if self.mode == "add":
-                account_name = (
-                    self.account_combo
-                    .get()
-                    .strip()
-                )
-
-                account_id = self.account_map.get(
-                    account_name
-                )
-
-                if account_id is None:
-                    messagebox.showwarning(
-                        "Account Required",
-                        "Please select an active account.",
-                        parent=self
-                    )
-                    return
-
-                receivable_service.record_receivable(
-                    created_date,
-                    description,
-                    account_id,
-                    person_id,
-                    amount,
-                    due_date
-                )
-
-            else:
+            if self.receivable:
                 receivable_service.update_receivable(
                     self.receivable[0],
                     description,
-                    amount,
-                    created_date,
-                    due_date,
-                    self.receivable[6]
+                    original_amount,
+                    created_date.isoformat(),
+                    (
+                        due_date.isoformat()
+                        if due_date
+                        else None
+                    ),
+                    self.receivable[6],
+                )
+
+                show_update_success(
+                    self,
+                    "Receivable",
+                )
+
+            else:
+                receivable_service.record_receivable(
+                    created_date.isoformat(),
+                    description,
+                    account_id,
+                    person_id,
+                    original_amount,
+                    (
+                        due_date.isoformat()
+                        if due_date
+                        else None
+                    ),
+                )
+
+                show_save_success(
+                    self,
+                    "Receivable",
                 )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Save Error",
-                f"Unable to save the receivable.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Save Receivable",
+                exc,
             )
             return
 
@@ -840,359 +956,165 @@ class ReceivableForm(ctk.CTkToplevel):
         self.destroy()
 
 
-class PaymentForm(ctk.CTkToplevel):
+class PaymentForm(FormWindow):
     def __init__(
         self,
         master,
         receivable,
         balance,
-        account_map,
-        on_saved=None
+        account_options=None,
+        on_saved=None,
     ):
-        super().__init__(master)
-
         self.receivable = receivable
         self.balance = balance
-        self.account_map = account_map
+        self.account_options = account_options or []
         self.on_saved = on_saved
 
-        self.title("Record Payment")
-        self.geometry("580x620")
-        self.resizable(False, False)
-        self.configure(fg_color=CONTENT)
-
-        self.transient(master)
-        self.grab_set()
+        super().__init__(
+            master,
+            "Receive Payment",
+            width=560,
+            height=620,
+        )
 
         self._build()
 
     def _build(self):
-        panel = ctk.CTkFrame(
-            self,
-            fg_color=PANEL,
-            corner_radius=PANEL_RADIUS
-        )
-
-        panel.pack(
-            fill="both",
-            expand=True,
-            padx=18,
-            pady=18
-        )
-
-        ctk.CTkLabel(
-            panel,
-            text="Record Payment",
-            font=FONT_SECTION,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(24, 4)
-        )
-
-        ctk.CTkLabel(
-            panel,
-            text=(
-                f"{self.receivable[2]}\n"
-                f"Remaining Balance: {self._money(self.balance)}"
-            ),
-            font=FONT_BODY,
-            text_color=TEXT_DARK,
-            justify="left"
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(0, 18)
-        )
-
-        self.date_entry = self._field(
-            panel,
-            "Payment Date",
-            date.today().isoformat()
-        )
-
-        self.description_entry = self._field(
-            panel,
-            "Description",
-            f"Payment for {self.receivable[2]}"
-        )
-
-        self.amount_entry = self._field(
-            panel,
-            "Payment Amount",
-            self._amount_value(self.balance)
-        )
-
-        account_names = list(
-            self.account_map.keys()
-        )
-
-        self.account_combo = self._combo(
-            panel,
-            "Deposit Account",
-            account_names or ["No accounts available"],
+        self.add_description(
             (
-                account_names[0]
-                if account_names
-                else "No accounts available"
-            )
+                f"{self.receivable[2]}\n"
+                f"Remaining Balance: "
+                f"{format_currency(self.balance)}"
+            ),
         )
 
-        buttons = ctk.CTkFrame(
-            panel,
-            fg_color="transparent"
+        self.date_entry = self.add_date_field(
+            "Payment Date",
+            date.today(),
         )
 
-        buttons.pack(
-            fill="x",
-            padx=28,
-            pady=(20, 24)
+        self.description_entry = self.add_field(
+            "Description",
+            f"Payment for {self.receivable[2]}",
         )
 
-        buttons.grid_columnconfigure(
-            (0, 1),
-            weight=1
+        self.amount_entry = self.add_currency_field(
+            "Payment Amount",
+            self.balance,
         )
 
-        ctk.CTkButton(
-            buttons,
-            text="Cancel",
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=PANEL_HOVER,
-            hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            font=FONT_BODY_BOLD,
-            command=self.destroy
-        ).grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=(0, 6)
+        self.account_selector = self.add_selector(
+            "Deposit Account",
+            self.account_options,
         )
 
-        ctk.CTkButton(
-            buttons,
-            text="Record Payment",
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=SUCCESS,
-            hover_color="#285B4B",
-            text_color=TEXT_LIGHT,
-            font=FONT_BODY_BOLD,
-            command=self._save
-        ).grid(
-            row=0,
-            column=1,
-            sticky="ew",
-            padx=(6, 0)
+        self.add_buttons(
+            save_text="Receive Payment",
+            save_command=self._save,
         )
 
-    def _field(self, parent, label, value):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
-        )
-
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
-
-        entry = ctk.CTkEntry(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT
-        )
-
-        entry.pack(fill="x")
-
-        if value is not None:
-            entry.insert(
-                0,
-                str(value)
+    def _validate(self):
+        try:
+            payment_date = self.get_date_value(
+                self.date_entry
             )
 
-        return entry
+            description = validate_length(
+                require_text(
+                    self.description_entry.get(),
+                    "Description",
+                ),
+                "Description",
+                min_length=1,
+                max_length=200,
+            )
 
-    def _combo(
-        self,
-        parent,
-        label,
-        values,
-        selected
-    ):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
+            payment_amount = self.get_currency_value(
+                self.amount_entry
+            )
 
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
-        )
+            if payment_amount <= 0:
+                raise ValueError(
+                    "Payment amount must be greater than zero."
+                )
 
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
+            if payment_amount > self.balance:
+                raise ValueError(
+                    "Payment cannot exceed the remaining balance."
+                )
 
-        combo = ctk.CTkComboBox(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            button_color=PANEL_HOVER,
-            button_hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            dropdown_fg_color=INPUT_BG,
-            dropdown_hover_color=PANEL_HOVER,
-            dropdown_text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT,
-            state="readonly",
-            values=values
-        )
+            created_date = self.receivable[4]
 
-        combo.pack(fill="x")
-        combo.set(selected)
+            if created_date:
+                created_date_text = str(
+                    created_date
+                )[:10]
 
-        return combo
+                if payment_date.isoformat() < created_date_text:
+                    raise ValueError(
+                        "Payment date cannot be before the receivable creation date."
+                    )
 
-    @staticmethod
-    def _money(value):
-        return f"₱{value / 100:,.2f}"
+            account = self.account_selector.get()
 
-    @staticmethod
-    def _amount_value(cents):
-        return f"{cents / 100:.2f}"
+            if not account or account == "No options available":
+                raise ValueError(
+                    "Deposit account is required."
+                )
+
+            account_id = int(
+                account.split(" - ", 1)[0]
+            )
+
+            return (
+                payment_date,
+                description,
+                payment_amount,
+                account_id,
+            )
+
+        except ValueError as exc:
+            show_warning(
+                self,
+                "Validation Error",
+                str(exc),
+            )
+            return None
 
     def _save(self):
-        payment_date = (
-            self.date_entry
-            .get()
-            .strip()
-        )
+        values = self._validate()
 
-        description = (
-            self.description_entry
-            .get()
-            .strip()
-        )
-
-        amount_text = (
-            self.amount_entry
-            .get()
-            .strip()
-            .replace(",", "")
-        )
-
-        account_name = (
-            self.account_combo
-            .get()
-            .strip()
-        )
-
-        if (
-            not payment_date
-            or not description
-            or not amount_text
-        ):
-            messagebox.showwarning(
-                "Missing Information",
-                "Please complete the required fields.",
-                parent=self
-            )
+        if values is None:
             return
 
-        try:
-            date.fromisoformat(
-                payment_date
-            )
-
-            amount = int(
-                round(
-                    float(amount_text) * 100
-                )
-            )
-
-        except ValueError:
-            messagebox.showwarning(
-                "Invalid Information",
-                "Use YYYY-MM-DD for the date and a valid payment amount.",
-                parent=self
-            )
-            return
-
-        if amount <= 0:
-            messagebox.showwarning(
-                "Invalid Amount",
-                "Payment amount must be greater than zero.",
-                parent=self
-            )
-            return
-
-        if amount > self.balance:
-            messagebox.showwarning(
-                "Payment Too Large",
-                (
-                    f"The payment cannot exceed the remaining "
-                    f"balance of {self._money(self.balance)}."
-                ),
-                parent=self
-            )
-            return
-
-        account_id = self.account_map.get(
-            account_name
-        )
-
-        if account_id is None:
-            messagebox.showwarning(
-                "Account Required",
-                "Please select an active account.",
-                parent=self
-            )
-            return
+        (
+            payment_date,
+            description,
+            payment_amount,
+            account_id,
+        ) = values
 
         try:
             receivable_service.record_receivable_payment(
-                payment_date,
+                payment_date.isoformat(),
                 description,
                 account_id,
                 self.receivable[0],
-                amount
+                payment_amount,
             )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Payment Error",
-                f"Unable to record the payment.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Receive Payment",
+                exc,
             )
             return
+
+        show_save_success(
+            self,
+            "Receivable payment",
+        )
 
         if self.on_saved:
             self.on_saved()

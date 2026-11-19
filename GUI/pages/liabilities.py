@@ -1,33 +1,32 @@
 from datetime import date
-from tkinter import messagebox
 
 import customtkinter as ctk
 
-from services import liability_service, account_service
+from GUI.components.buttons import Buttons
+from GUI.components.forms import FormWindow
+from GUI.components.selectors import Selector
 from GUI.components.tables import Tables
-from GUI.styles.colors import (
-    CONTENT,
-    PANEL,
-    PANEL_HOVER,
-    TEXT_DARK,
-    TEXT_LIGHT,
-    SUCCESS,
-    DANGER,
-    INPUT_BG,
-    INPUT_BORDER,
-)
+from GUI.styles.colors import CONTENT, TEXT_DARK
 from GUI.styles.theme import (
     CONTENT_PAD_X,
     CONTENT_PAD_Y,
-    PANEL_RADIUS,
-    BUTTON_RADIUS,
-    INPUT_RADIUS,
-    FONT_SECTION,
-    FONT_BODY,
-    FONT_BODY_BOLD,
-    FONT_FORM_LABEL,
-    FONT_FORM_INPUT,
+    FONT_PAGE_TITLE,
+    FORM_HEIGHT,
+    FORM_WIDTH,
 )
+from GUI.utils.feedback import (
+    show_info,
+    show_operation_error,
+    show_update_success,
+    show_save_success,
+    show_warning,
+)
+from GUI.utils.formatters import format_currency, format_date
+from GUI.utils.validation import (
+    validate_currency,
+    validate_length,
+)
+from services import account_service, liability_service, people_service
 
 
 class LiabilitiesPage(ctk.CTkFrame):
@@ -35,25 +34,30 @@ class LiabilitiesPage(ctk.CTkFrame):
         super().__init__(
             master,
             corner_radius=0,
-            fg_color=CONTENT
+            fg_color=CONTENT,
         )
 
         self.navigate = navigate
         self.accounts = []
         self.account_map = {}
+        self.people = []
         self.selected_liability_id = None
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
+        self._build()
+        self.refresh()
+
+    def _build(self):
         self._build_header()
         self._build_table()
-        self.refresh()
 
     def _build_header(self):
         header = ctk.CTkFrame(
             self,
-            fg_color="transparent"
+            fg_color="transparent",
+            corner_radius=0,
         )
 
         header.grid(
@@ -61,7 +65,7 @@ class LiabilitiesPage(ctk.CTkFrame):
             column=0,
             sticky="ew",
             padx=CONTENT_PAD_X,
-            pady=(CONTENT_PAD_Y, 10)
+            pady=(CONTENT_PAD_Y, 12),
         )
 
         header.grid_columnconfigure(0, weight=1)
@@ -69,121 +73,130 @@ class LiabilitiesPage(ctk.CTkFrame):
         ctk.CTkLabel(
             header,
             text="Liabilities",
-            font=FONT_SECTION,
-            text_color=TEXT_DARK
+            font=FONT_PAGE_TITLE,
+            text_color=TEXT_DARK,
         ).grid(
             row=0,
             column=0,
-            sticky="w"
+            sticky="w",
         )
 
-        actions = ctk.CTkFrame(
+        Buttons(
             header,
-            fg_color="transparent"
-        )
-
-        actions.grid(
+            actions=[
+                {
+                    "label": "Add Liability",
+                    "command": self._open_add_form,
+                    "style": "primary",
+                    "width": 140,
+                    "height": 40,
+                },
+                {
+                    "label": "Payment",
+                    "command": self._open_payment_form,
+                    "style": "default",
+                    "width": 80,
+                    "height": 40,
+                },
+                {
+                    "label": "Edit",
+                    "command": self._open_edit_form,
+                    "style": "default",
+                    "width": 80,
+                    "height": 40,
+                },
+                {
+                    "label": "View",
+                    "command": self._open_view,
+                    "style": "default",
+                    "width": 80,
+                    "height": 40,
+                },
+                {
+                    "label": "Refresh",
+                    "command": self.refresh,
+                    "style": "default",
+                    "width": 90,
+                    "height": 40,
+                },
+            ],
+            columns=5,
+            height=40,
+            padx=3,
+            pady=0,
+        ).grid(
             row=0,
             column=1,
-            sticky="e"
+            sticky="e",
         )
-
-        buttons = [
-            ("Add Liability", self._open_add_form),
-            ("Record Payment", self._open_payment_form),
-            ("Edit Liability", self._open_edit_form),
-            ("Refresh", self.refresh),
-        ]
-
-        for index, (text, command) in enumerate(buttons):
-            ctk.CTkButton(
-                actions,
-                text=text,
-                width=140,
-                height=44,
-                corner_radius=BUTTON_RADIUS,
-                fg_color=PANEL,
-                hover_color=PANEL_HOVER,
-                text_color=TEXT_DARK,
-                font=FONT_BODY_BOLD,
-                command=command
-            ).grid(
-                row=0,
-                column=index,
-                padx=4,
-                pady=2
-            )
 
     def _build_table(self):
-        panel = ctk.CTkFrame(
+        self.table = Tables(
             self,
-            fg_color=PANEL,
-            corner_radius=PANEL_RADIUS
+            columns=[
+                {
+                    "key": "person_name",
+                    "label": "PERSON",
+                    "weight": 2,
+                    "minsize": 140,
+                },
+                {
+                    "key": "description",
+                    "label": "DESCRIPTION",
+                    "weight": 3,
+                    "minsize": 180,
+                },
+                {
+                    "key": "original_amount",
+                    "label": "ORIGINAL AMOUNT",
+                    "weight": 1,
+                    "minsize": 140,
+                    "anchor": "e",
+                },
+                {
+                    "key": "paid_amount",
+                    "label": "PAID AMOUNT",
+                    "weight": 1,
+                    "minsize": 140,
+                    "anchor": "e",
+                },
+                {
+                    "key": "balance",
+                    "label": "BALANCE",
+                    "weight": 1,
+                    "minsize": 140,
+                    "anchor": "e",
+                },
+                {
+                    "key": "created",
+                    "label": "CREATED",
+                    "weight": 1,
+                    "minsize": 110,
+                },
+                {
+                    "key": "due",
+                    "label": "DUE",
+                    "weight": 1,
+                    "minsize": 110,
+                },
+                {
+                    "key": "status",
+                    "label": "STATUS",
+                    "weight": 1,
+                    "minsize": 100,
+                    "anchor": "center",
+                },
+            ],
+            empty_text="No liabilities yet",
+            command=self._select_liability,
         )
 
-        panel.grid(
+        self.table.grid(
             row=1,
             column=0,
             sticky="nsew",
             padx=CONTENT_PAD_X,
-            pady=(0, CONTENT_PAD_Y)
-        )
-
-        panel.grid_columnconfigure(0, weight=1)
-        panel.grid_rowconfigure(0, weight=1)
-
-        self.table = Tables(
-            panel,
-            columns=[
-                {
-                    "label": "PERSON ID",
-                    "weight": 1,
-                    "minsize": 100
-                },
-                {
-                    "label": "DESCRIPTION",
-                    "weight": 3,
-                    "minsize": 180
-                },
-                {
-                    "label": "ORIGINAL AMOUNT",
-                    "weight": 1,
-                    "minsize": 140,
-                    "anchor": "e"
-                },
-                {
-                    "label": "BALANCE",
-                    "weight": 1,
-                    "minsize": 140,
-                    "anchor": "e"
-                },
-                {
-                    "label": "CREATED",
-                    "weight": 1,
-                    "minsize": 110
-                },
-                {
-                    "label": "DUE",
-                    "weight": 1,
-                    "minsize": 110
-                },
-                {
-                    "label": "STATUS",
-                    "weight": 1,
-                    "minsize": 100,
-                    "anchor": "center"
-                },
-            ],
-            empty_text="No liabilities yet",
-            on_double_click=self._show_liability
-        )
-
-        self.table.grid(
-            row=0,
-            column=0,
-            sticky="nsew",
-            padx=18,
-            pady=18
+            pady=(0, CONTENT_PAD_Y),
         )
 
     def refresh(self):
@@ -199,17 +212,20 @@ class LiabilitiesPage(ctk.CTkFrame):
                 for account in self.accounts
             }
 
+            self.people = people_service.get_people()
+
             liabilities = liability_service.get_liabilities()
 
         except Exception as exc:
-            messagebox.showerror(
-                "Load Error",
-                f"Unable to load liabilities.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Load liabilities",
+                exc,
             )
             return
 
-        self.table.clear()
+        rows = []
+        balance_error = None
 
         for liability in liabilities:
             (
@@ -227,128 +243,293 @@ class LiabilitiesPage(ctk.CTkFrame):
                 balance = liability_service.get_liability_balance(
                     liability_id
                 )
-            except Exception:
-                balance = original_amount
+                paid_amount = original_amount - balance
+                formatted_balance = format_currency(balance)
+                formatted_paid = format_currency(paid_amount)
 
-            self.table.add_row(
-                values=(
-                    person_id if person_id is not None else "-",
-                    description,
-                    self._money(original_amount),
-                    self._money(balance),
-                    date_created,
-                    due_date or "-",
-                    status,
-                ),
-                row_id=liability_id,
-                cell_styles={
-                    2: {
-                        "font": FONT_BODY_BOLD,
-                        "text_color": TEXT_DARK
-                    },
-                    3: {
-                        "font": FONT_BODY_BOLD,
-                        "text_color": (
-                            SUCCESS
-                            if balance == 0
-                            else DANGER
-                        )
-                    },
-                    6: {
-                        "font": FONT_BODY_BOLD,
-                        "text_color": (
-                            SUCCESS
-                            if status == "PAID"
-                            else TEXT_DARK
-                        )
-                    },
+            except Exception as exc:
+                if balance_error is None:
+                    balance_error = exc
+
+                formatted_balance = "Unavailable"
+                formatted_paid = "Unavailable"
+
+            rows.append(
+                {
+                    "id": liability_id,
+                    "person_name": self._get_person_name(person_id),
+                    "description": description,
+                    "original_amount": format_currency(
+                        original_amount
+                    ),
+                    "paid_amount": formatted_paid,
+                    "balance": formatted_balance,
+                    "created": format_date(date_created),
+                    "due": (
+                        format_date(due_date)
+                        if due_date
+                        else "-"
+                    ),
+                    "status": status,
                 }
             )
 
-    def _selected_liability(self):
+        self.table.set_rows(rows)
+
+        if self.selected_liability_id is not None:
+            selected_exists = any(
+                row["id"] == self.selected_liability_id
+                for row in rows
+            )
+
+            if not selected_exists:
+                self.selected_liability_id = None
+
+        if balance_error is not None:
+            show_operation_error(
+                self,
+                "Load liability balance",
+                balance_error,
+            )
+
+    def _get_person_name(self, person_id):
+        if person_id is None:
+            return "-"
+
+        for person in self.people:
+            if person[0] == person_id:
+                return person[1]
+
+        return "-"
+
+    def _select_liability(self, row):
+        if not isinstance(row, dict):
+            return
+
+        self.selected_liability_id = row.get("id")
+
+    def _get_selected_liability(self):
         if self.selected_liability_id is None:
-            messagebox.showinfo(
+            show_warning(
+                self,
                 "Select Liability",
-                "Double-click a liability row first, then use the action buttons.",
-                parent=self
+                "Select a liability row first, then use the action buttons.",
             )
             return None
 
         try:
-            return liability_service.get_liability_by_id(
+            liability = liability_service.get_liability_by_id(
                 self.selected_liability_id
             )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Liability Error",
-                f"Unable to load the liability.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Load liability",
+                exc,
             )
             return None
+
+        if not liability:
+            self.selected_liability_id = None
+            self.refresh()
+            show_warning(
+                self,
+                "Liability Not Found",
+                "The selected liability no longer exists.",
+            )
+            return None
+
+        return liability
+
+    def _get_liabilities_for_selector(self):
+        try:
+            liabilities = liability_service.get_liabilities()
+
+        except Exception as exc:
+            show_operation_error(
+                self,
+                "Load liabilities",
+                exc,
+            )
+            return []
+
+        return [
+            {
+                "id": liability[0],
+                "description": liability[3],
+                "status": liability[7],
+            }
+            for liability in liabilities
+        ]
 
     def _open_add_form(self):
         LiabilityForm(
             self,
             mode="add",
+            people=self.people,
             account_map=self.account_map,
-            on_saved=self.refresh
+            on_saved=self.refresh,
         )
 
     def _open_edit_form(self):
-        liability = self._selected_liability()
+        if self.selected_liability_id is not None:
+            liability = self._get_selected_liability()
 
-        if liability is None:
+            if liability is None:
+                return
+
+            self._edit_selected(liability)
+            return
+
+        liabilities = self._get_liabilities_for_selector()
+
+        if not liabilities:
+            show_info(
+                self,
+                "No Liabilities",
+                "No liabilities are available to edit.",
+            )
+            return
+
+        Selector(
+            self,
+            title="Select Liability",
+            items=liabilities,
+            display_key="description",
+            value_key="id",
+            description="Select the liability you want to edit.",
+            select_button_text="Edit",
+            on_selected=self._edit_selected,
+        )
+
+    def _edit_selected(self, selected):
+        liability_id = self._get_item_id(selected)
+
+        if liability_id is None:
+            return
+
+        try:
+            liability = liability_service.get_liability_by_id(
+                liability_id
+            )
+
+        except Exception as exc:
+            show_operation_error(
+                self,
+                "Load liability",
+                exc,
+            )
+            return
+
+        if not liability:
+            self.selected_liability_id = None
+            self.refresh()
+            show_warning(
+                self,
+                "Liability Not Found",
+                "The selected liability no longer exists.",
+            )
             return
 
         if liability[7] == "PAID":
-            messagebox.showwarning(
+            show_warning(
+                self,
                 "Unavailable",
                 "A paid liability cannot be edited.",
-                parent=self
             )
             return
+
+        self.selected_liability_id = liability_id
 
         LiabilityForm(
             self,
             mode="edit",
             liability=liability,
+            people=self.people,
             account_map=self.account_map,
-            on_saved=self.refresh
+            on_saved=self.refresh,
         )
 
     def _open_payment_form(self):
-        liability = self._selected_liability()
+        if self.selected_liability_id is not None:
+            liability = self._get_selected_liability()
 
-        if liability is None:
+            if liability is None:
+                return
+
+            self._payment_selected(liability)
             return
 
-        if liability[7] == "PAID":
-            messagebox.showwarning(
-                "Already Paid",
-                "This liability has already been fully paid.",
-                parent=self
+        liabilities = self._get_liabilities_for_selector()
+
+        if not liabilities:
+            show_info(
+                self,
+                "No Liabilities",
+                "No liabilities are available for payment.",
             )
+            return
+
+        Selector(
+            self,
+            title="Select Liability",
+            items=liabilities,
+            display_key="description",
+            value_key="id",
+            description="Select the liability you want to make a payment for.",
+            select_button_text="Payment",
+            on_selected=self._payment_selected,
+        )
+
+    def _payment_selected(self, selected):
+        liability_id = self._get_item_id(selected)
+
+        if liability_id is None:
             return
 
         try:
+            liability = liability_service.get_liability_by_id(
+                liability_id
+            )
+
+            if not liability:
+                show_warning(
+                    self,
+                    "Liability Not Found",
+                    "The selected liability no longer exists.",
+                )
+                self.selected_liability_id = None
+                self.refresh()
+                return
+
             balance = liability_service.get_liability_balance(
-                liability[0]
+                liability_id
             )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Balance Error",
-                f"Unable to load the liability balance.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Load liability balance",
+                exc,
+            )
+            return
+
+        self.selected_liability_id = liability_id
+
+        if liability[7] == "PAID":
+            show_warning(
+                self,
+                "Already Paid",
+                "This liability has already been fully paid.",
             )
             return
 
         if balance <= 0:
-            messagebox.showwarning(
+            show_warning(
+                self,
                 "No Balance",
                 "This liability has no remaining balance.",
-                parent=self
             )
             return
 
@@ -357,11 +538,45 @@ class LiabilitiesPage(ctk.CTkFrame):
             liability,
             balance,
             self.account_map,
-            on_saved=self.refresh
+            on_saved=self.refresh,
         )
 
-    def _show_liability(self, liability_id):
-        self.selected_liability_id = liability_id
+    def _open_view(self):
+        if self.selected_liability_id is not None:
+            liability = self._get_selected_liability()
+
+            if liability is None:
+                return
+
+            self._view_selected(liability)
+            return
+
+        liabilities = self._get_liabilities_for_selector()
+
+        if not liabilities:
+            show_info(
+                self,
+                "No Liabilities",
+                "No liabilities are available to view.",
+            )
+            return
+
+        Selector(
+            self,
+            title="Select Liability",
+            items=liabilities,
+            display_key="description",
+            value_key="id",
+            description="Select the liability you want to view.",
+            select_button_text="View",
+            on_selected=self._view_selected,
+        )
+
+    def _view_selected(self, selected):
+        liability_id = self._get_item_id(selected)
+
+        if liability_id is None:
+            return
 
         try:
             liability = liability_service.get_liability_by_id(
@@ -377,15 +592,24 @@ class LiabilitiesPage(ctk.CTkFrame):
             )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Liability Error",
-                f"Unable to load liability details.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Load liability details",
+                exc,
             )
             return
 
         if not liability:
+            self.selected_liability_id = None
+            self.refresh()
+            show_warning(
+                self,
+                "Liability Not Found",
+                "The selected liability no longer exists.",
+            )
             return
+
+        self.selected_liability_id = liability_id
 
         (
             _,
@@ -398,10 +622,12 @@ class LiabilitiesPage(ctk.CTkFrame):
             status,
         ) = liability
 
+        paid_amount = original_amount - balance
+
         history_text = "\n".join(
             (
-                f"{row[2]}  -  "
-                f"{self._money(row[3])}  -  "
+                f"{format_date(row[2])}  -  "
+                f"{format_currency(row[3])}  -  "
                 f"{row[4]}"
             )
             for row in history
@@ -411,435 +637,228 @@ class LiabilitiesPage(ctk.CTkFrame):
             history_text = "No balance history"
 
         details = (
-            f"Person ID: {person_id if person_id is not None else 'None'}\n"
+            f"Person ID: "
+            f"{person_id if person_id is not None else 'None'}\n"
             f"Credit Account ID: "
             f"{credit_account_id if credit_account_id is not None else 'None'}\n"
             f"Description: {description}\n"
-            f"Original Amount: {self._money(original_amount)}\n"
-            f"Current Balance: {self._money(balance)}\n"
-            f"Created: {date_created}\n"
-            f"Due Date: {due_date or 'None'}\n"
+            f"Original Amount: {format_currency(original_amount)}\n"
+            f"Paid Amount: {format_currency(paid_amount)}\n"
+            f"Remaining Balance: {format_currency(balance)}\n"
+            f"Created: {format_date(date_created)}\n"
+            f"Due Date: "
+            f"{format_date(due_date) if due_date else 'None'}\n"
             f"Status: {status}\n\n"
             f"Balance History:\n"
             f"{history_text}"
         )
 
-        messagebox.showinfo(
+        show_info(
+            self,
             "Liability Details",
             details,
-            parent=self
         )
 
     @staticmethod
-    def _money(value):
-        return f"₱{value / 100:,.2f}"
+    def _get_item_id(item):
+        if isinstance(item, dict):
+            return item.get("id")
+
+        if isinstance(item, (tuple, list)):
+            return item[0] if item else None
+
+        return getattr(item, "id", None)
 
 
-class LiabilityForm(ctk.CTkToplevel):
+class LiabilityForm(FormWindow):
     def __init__(
         self,
         master,
         mode="add",
         liability=None,
+        people=None,
         account_map=None,
-        on_saved=None
+        on_saved=None,
     ):
-        super().__init__(master)
-
         self.mode = mode
         self.liability = liability
+        self.people = people or []
         self.account_map = account_map or {}
         self.on_saved = on_saved
 
-        self.title(
-            "Add Liability"
-            if mode == "add"
-            else "Edit Liability"
+        super().__init__(
+            master,
+            "Add Liability" if mode == "add" else "Edit Liability",
+            width=FORM_WIDTH,
+            height=730,
         )
-
-        self.geometry("600x760")
-        self.resizable(False, False)
-        self.configure(fg_color=CONTENT)
-
-        self.transient(master)
-        self.grab_set()
 
         self._build()
 
     def _build(self):
-        panel = ctk.CTkFrame(
-            self,
-            fg_color=PANEL,
-            corner_radius=PANEL_RADIUS
+        self.add_description(
+            "Record the liability details below."
         )
 
-        panel.pack(
-            fill="both",
-            expand=True,
-            padx=18,
-            pady=18
+        person_values = [
+            f"{person[0]} - {person[1]}"
+            for person in self.people
+        ]
+
+        selected_person = None
+
+        if self.liability and self.liability[1] is not None:
+            for person in self.people:
+                if person[0] == self.liability[1]:
+                    selected_person = f"{person[0]} - {person[1]}"
+                    break
+
+        self.person_selector = self.add_selector(
+            "Person",
+            person_values,
+            value=selected_person,
         )
 
-        ctk.CTkLabel(
-            panel,
-            text=(
-                "Add Liability"
-                if self.mode == "add"
-                else "Edit Liability"
-            ),
-            font=FONT_SECTION,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(24, 4)
-        )
-
-        ctk.CTkLabel(
-            panel,
-            text="Record the liability details below.",
-            font=FONT_BODY,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(0, 18)
-        )
-
-        self.person_entry = self._field(
-            panel,
-            "Person ID",
-            (
-                self.liability[1]
-                if self.liability and self.liability[1] is not None
-                else ""
-            )
-        )
-
-        self.description_entry = self._field(
-            panel,
+        self.description_entry = self.add_field(
             "Description",
-            self.liability[3]
-            if self.liability
-            else ""
+            value=(
+                self.liability[3]
+                if self.liability
+                else ""
+            ),
+            placeholder_text="Liability description",
         )
 
-        self.amount_entry = self._field(
-            panel,
+        self.amount_entry = self.add_currency_field(
             "Original Amount",
-            self._amount_value(self.liability[4])
-            if self.liability
-            else ""
+            value=(
+                self.liability[4]
+                if self.liability
+                else ""
+            ),
         )
 
-        self.created_entry = self._field(
-            panel,
+        self.created_entry = self.add_date_field(
             "Date Created",
-            self.liability[5]
-            if self.liability
-            else date.today().isoformat()
+            value=(
+                self.liability[5]
+                if self.liability
+                else date.today()
+            ),
         )
 
-        self.due_entry = self._field(
-            panel,
+        self.due_entry = self.add_date_field(
             "Due Date",
-            (
+            value=(
                 self.liability[6]
                 if self.liability and self.liability[6]
                 else ""
-            )
+            ),
         )
 
-        account_names = list(
-            self.account_map.keys()
-        )
+        account_values = [
+            f"{account_id} - {account_name}"
+            for account_name, account_id in self.account_map.items()
+        ]
 
-        selected_account = ""
+        selected_account = None
 
         if self.liability and self.liability[2] is not None:
-            for name, account_id in self.account_map.items():
+            for account_name, account_id in self.account_map.items():
                 if account_id == self.liability[2]:
-                    selected_account = name
+                    selected_account = (
+                        f"{account_id} - {account_name}"
+                    )
                     break
 
-        self.credit_account_combo = self._combo(
-            panel,
+        self.credit_account_selector = self.add_selector(
             "Credit Account",
-            account_names or ["No accounts available"],
-            (
-                selected_account
-                if selected_account
-                else (
-                    account_names[0]
-                    if account_names
-                    else "No accounts available"
-                )
-            )
+            account_values,
+            value=selected_account,
         )
 
-        buttons = ctk.CTkFrame(
-            panel,
-            fg_color="transparent"
-        )
-
-        buttons.pack(
-            fill="x",
-            padx=28,
-            pady=(20, 24)
-        )
-
-        buttons.grid_columnconfigure(
-            (0, 1),
-            weight=1
-        )
-
-        ctk.CTkButton(
-            buttons,
-            text="Cancel",
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=PANEL_HOVER,
-            hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            font=FONT_BODY_BOLD,
-            command=self.destroy
-        ).grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=(0, 6)
-        )
-
-        ctk.CTkButton(
-            buttons,
-            text=(
+        self.add_buttons(
+            save_text=(
                 "Save Liability"
                 if self.mode == "add"
                 else "Save Changes"
             ),
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=TEXT_DARK,
-            hover_color="#285B4B",
-            text_color=TEXT_LIGHT,
-            font=FONT_BODY_BOLD,
-            command=self._save
-        ).grid(
-            row=0,
-            column=1,
-            sticky="ew",
-            padx=(6, 0)
+            save_command=self._save,
         )
-
-    def _field(self, parent, label, value):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
-        )
-
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
-
-        entry = ctk.CTkEntry(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT
-        )
-
-        entry.pack(fill="x")
-
-        if value is not None and value != "":
-            entry.insert(
-                0,
-                str(value)
-            )
-
-        return entry
-
-    def _combo(
-        self,
-        parent,
-        label,
-        values,
-        selected
-    ):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
-        )
-
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
-
-        combo = ctk.CTkComboBox(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            button_color=PANEL_HOVER,
-            button_hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            dropdown_fg_color=INPUT_BG,
-            dropdown_hover_color=PANEL_HOVER,
-            dropdown_text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT,
-            state="readonly",
-            values=values
-        )
-
-        combo.pack(fill="x")
-        combo.set(selected)
-
-        return combo
-
-    @staticmethod
-    def _amount_value(cents):
-        return f"{cents / 100:.2f}"
 
     def _save(self):
-        person_text = (
-            self.person_entry
-            .get()
-            .strip()
-        )
-
-        description = (
-            self.description_entry
-            .get()
-            .strip()
-        )
-
-        amount_text = (
-            self.amount_entry
-            .get()
-            .strip()
-            .replace(",", "")
-        )
-
-        created_date = (
-            self.created_entry
-            .get()
-            .strip()
-        )
-
-        due_date = (
-            self.due_entry
-            .get()
-            .strip()
-            or None
-        )
-
-        account_name = (
-            self.credit_account_combo
-            .get()
-            .strip()
-        )
-
-        if (
-            not description
-            or not amount_text
-            or not created_date
-        ):
-            messagebox.showwarning(
-                "Missing Information",
-                "Please complete the required fields.",
-                parent=self
-            )
-            return
-
         try:
-            person_id = (
-                int(person_text)
-                if person_text
-                else None
-            )
+            person_value = self.person_selector.get()
 
-            amount = int(
-                round(
-                    float(amount_text) * 100
-                )
-            )
+            person_id = None
 
-            date.fromisoformat(
-                created_date
-            )
-
-            if due_date:
-                date.fromisoformat(
-                    due_date
+            if (
+                person_value
+                and person_value != "No options available"
+            ):
+                person_id = int(
+                    person_value.split(" - ", 1)[0]
                 )
 
-        except ValueError:
-            messagebox.showwarning(
+            description = validate_length(
+                self.description_entry.get(),
+                "Description",
+                min_length=1,
+                max_length=255,
+            )
+
+            validate_currency(
+                self.amount_entry.get(),
+                "Original Amount",
+            )
+
+            amount = self.get_currency_value(
+                self.amount_entry
+            )
+
+            created_date = self.get_date_value(
+                self.created_entry
+            ).isoformat()
+
+            due_date = None
+
+            if self.due_entry.get().strip():
+                due_date = self.get_date_value(
+                    self.due_entry
+                ).isoformat()
+
+            account_value = self.credit_account_selector.get()
+
+            if (
+                not account_value
+                or account_value == "No options available"
+            ):
+                raise ValueError(
+                    "Credit Account is required."
+                )
+
+            credit_account_id = int(
+                account_value.split(" - ", 1)[0]
+            )
+
+        except ValueError as exc:
+            show_warning(
+                self,
                 "Invalid Information",
-                "Person ID and amount must be valid. Dates must use YYYY-MM-DD.",
-                parent=self
-            )
-            return
-
-        if amount <= 0:
-            messagebox.showwarning(
-                "Invalid Amount",
-                "The liability amount must be greater than zero.",
-                parent=self
-            )
-            return
-
-        credit_account_id = self.account_map.get(
-            account_name
-        )
-
-        if credit_account_id is None:
-            messagebox.showwarning(
-                "Account Required",
-                "Please select an active credit account.",
-                parent=self
+                str(exc),
             )
             return
 
         try:
             if self.mode == "add":
-                account_id = credit_account_id
-
                 liability_service.record_liability(
                     created_date,
                     description,
-                    account_id,
+                    credit_account_id,
                     amount,
                     person_id,
                     credit_account_id,
-                    due_date
+                    due_date,
                 )
 
             else:
@@ -851,357 +870,143 @@ class LiabilityForm(ctk.CTkToplevel):
                     person_id,
                     credit_account_id,
                     due_date,
-                    self.liability[7]
+                    self.liability[7],
                 )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Save Error",
-                f"Unable to save the liability.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Save liability",
+                exc,
             )
             return
 
         if self.on_saved:
             self.on_saved()
 
+        if self.mode == "add":
+            show_save_success(
+                self,
+                "Liability",
+            )
+        else:
+            show_update_success(
+                self,
+                "Liability",
+            )
+
         self.destroy()
 
 
-class PaymentForm(ctk.CTkToplevel):
+class PaymentForm(FormWindow):
     def __init__(
         self,
         master,
         liability,
         balance,
         account_map,
-        on_saved=None
+        on_saved=None,
     ):
-        super().__init__(master)
-
         self.liability = liability
         self.balance = balance
-        self.account_map = account_map
+        self.account_map = account_map or {}
         self.on_saved = on_saved
 
-        self.title("Record Liability Payment")
-        self.geometry("580x620")
-        self.resizable(False, False)
-        self.configure(fg_color=CONTENT)
-
-        self.transient(master)
-        self.grab_set()
+        super().__init__(
+            master,
+            "Record Liability Payment",
+            width=FORM_WIDTH,
+            height=FORM_HEIGHT,
+        )
 
         self._build()
 
     def _build(self):
-        panel = ctk.CTkFrame(
-            self,
-            fg_color=PANEL,
-            corner_radius=PANEL_RADIUS
-        )
-
-        panel.pack(
-            fill="both",
-            expand=True,
-            padx=18,
-            pady=18
-        )
-
-        ctk.CTkLabel(
-            panel,
-            text="Record Liability Payment",
-            font=FONT_SECTION,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(24, 4)
-        )
-
-        ctk.CTkLabel(
-            panel,
-            text=(
-                f"{self.liability[3]}\n"
-                f"Remaining Balance: {self._money(self.balance)}"
-            ),
-            font=FONT_BODY,
-            text_color=TEXT_DARK,
-            justify="left"
-        ).pack(
-            anchor="w",
-            padx=28,
-            pady=(0, 18)
-        )
-
-        self.date_entry = self._field(
-            panel,
-            "Payment Date",
-            date.today().isoformat()
-        )
-
-        self.description_entry = self._field(
-            panel,
-            "Description",
-            f"Payment for {self.liability[3]}"
-        )
-
-        self.amount_entry = self._field(
-            panel,
-            "Payment Amount",
-            self._amount_value(self.balance)
-        )
-
-        account_names = list(
-            self.account_map.keys()
-        )
-
-        self.account_combo = self._combo(
-            panel,
-            "Payment Account",
-            account_names or ["No accounts available"],
+        self.add_description(
             (
-                account_names[0]
-                if account_names
-                else "No accounts available"
+                f"{self.liability[3]}\n"
+                f"Remaining Balance: "
+                f"{format_currency(self.balance)}"
             )
         )
 
-        buttons = ctk.CTkFrame(
-            panel,
-            fg_color="transparent"
+        self.date_entry = self.add_date_field(
+            "Payment Date",
+            value=date.today(),
         )
 
-        buttons.pack(
-            fill="x",
-            padx=28,
-            pady=(20, 24)
+        self.description_entry = self.add_field(
+            "Description",
+            value=f"Payment for {self.liability[3]}",
         )
 
-        buttons.grid_columnconfigure(
-            (0, 1),
-            weight=1
+        self.amount_entry = self.add_currency_field(
+            "Payment Amount",
+            value=self.balance,
         )
 
-        ctk.CTkButton(
-            buttons,
-            text="Cancel",
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=PANEL_HOVER,
-            hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            font=FONT_BODY_BOLD,
-            command=self.destroy
-        ).grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            padx=(0, 6)
+        account_values = [
+            f"{account_id} - {account_name}"
+            for account_name, account_id in self.account_map.items()
+        ]
+
+        self.account_selector = self.add_selector(
+            "Payment Account",
+            account_values,
         )
 
-        ctk.CTkButton(
-            buttons,
-            text="Record Payment",
-            height=40,
-            corner_radius=BUTTON_RADIUS,
-            fg_color=SUCCESS,
-            hover_color="#285B4B",
-            text_color=TEXT_LIGHT,
-            font=FONT_BODY_BOLD,
-            command=self._save
-        ).grid(
-            row=0,
-            column=1,
-            sticky="ew",
-            padx=(6, 0)
+        self.add_buttons(
+            save_text="Record Payment",
+            save_command=self._save,
         )
-
-    def _field(self, parent, label, value):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
-        )
-
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
-
-        entry = ctk.CTkEntry(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT
-        )
-
-        entry.pack(fill="x")
-
-        if value is not None:
-            entry.insert(
-                0,
-                str(value)
-            )
-
-        return entry
-
-    def _combo(
-        self,
-        parent,
-        label,
-        values,
-        selected
-    ):
-        wrapper = ctk.CTkFrame(
-            parent,
-            fg_color="transparent"
-        )
-
-        wrapper.pack(
-            fill="x",
-            padx=28,
-            pady=(0, 12)
-        )
-
-        ctk.CTkLabel(
-            wrapper,
-            text=label,
-            font=FONT_FORM_LABEL,
-            text_color=TEXT_DARK
-        ).pack(
-            anchor="w",
-            pady=(0, 5)
-        )
-
-        combo = ctk.CTkComboBox(
-            wrapper,
-            height=36,
-            corner_radius=INPUT_RADIUS,
-            fg_color=INPUT_BG,
-            border_color=INPUT_BORDER,
-            button_color=PANEL_HOVER,
-            button_hover_color=CONTENT,
-            text_color=TEXT_DARK,
-            dropdown_fg_color=INPUT_BG,
-            dropdown_hover_color=PANEL_HOVER,
-            dropdown_text_color=TEXT_DARK,
-            font=FONT_FORM_INPUT,
-            state="readonly",
-            values=values
-        )
-
-        combo.pack(fill="x")
-        combo.set(selected)
-
-        return combo
-
-    @staticmethod
-    def _money(value):
-        return f"₱{value / 100:,.2f}"
-
-    @staticmethod
-    def _amount_value(cents):
-        return f"{cents / 100:.2f}"
 
     def _save(self):
-        payment_date = (
-            self.date_entry
-            .get()
-            .strip()
-        )
-
-        description = (
-            self.description_entry
-            .get()
-            .strip()
-        )
-
-        amount_text = (
-            self.amount_entry
-            .get()
-            .strip()
-            .replace(",", "")
-        )
-
-        account_name = (
-            self.account_combo
-            .get()
-            .strip()
-        )
-
-        if (
-            not payment_date
-            or not description
-            or not amount_text
-        ):
-            messagebox.showwarning(
-                "Missing Information",
-                "Please complete the required fields.",
-                parent=self
-            )
-            return
-
         try:
-            date.fromisoformat(
-                payment_date
+            payment_date = self.get_date_value(
+                self.date_entry
+            ).isoformat()
+
+            description = validate_length(
+                self.description_entry.get(),
+                "Description",
+                min_length=1,
+                max_length=255,
             )
 
-            amount = int(
-                round(
-                    float(amount_text) * 100
+            validate_currency(
+                self.amount_entry.get(),
+                "Payment Amount",
+            )
+
+            amount = self.get_currency_value(
+                self.amount_entry
+            )
+
+            if amount > self.balance:
+                raise ValueError(
+                    "Payment cannot exceed the remaining balance of "
+                    f"{format_currency(self.balance)}."
                 )
+
+            account_value = self.account_selector.get()
+
+            if (
+                not account_value
+                or account_value == "No options available"
+            ):
+                raise ValueError(
+                    "Payment Account is required."
+                )
+
+            account_id = int(
+                account_value.split(" - ", 1)[0]
             )
 
-        except ValueError:
-            messagebox.showwarning(
-                "Invalid Information",
-                "Use YYYY-MM-DD for the date and a valid payment amount.",
-                parent=self
-            )
-            return
-
-        if amount <= 0:
-            messagebox.showwarning(
-                "Invalid Amount",
-                "Payment amount must be greater than zero.",
-                parent=self
-            )
-            return
-
-        if amount > self.balance:
-            messagebox.showwarning(
-                "Payment Too Large",
-                (
-                    f"The payment cannot exceed the remaining "
-                    f"balance of {self._money(self.balance)}."
-                ),
-                parent=self
-            )
-            return
-
-        account_id = self.account_map.get(
-            account_name
-        )
-
-        if account_id is None:
-            messagebox.showwarning(
-                "Account Required",
-                "Please select an active account.",
-                parent=self
+        except ValueError as exc:
+            show_warning(
+                self,
+                "Invalid Payment",
+                str(exc),
             )
             return
 
@@ -1211,18 +1016,23 @@ class PaymentForm(ctk.CTkToplevel):
                 description,
                 account_id,
                 self.liability[0],
-                amount
+                amount,
             )
 
         except Exception as exc:
-            messagebox.showerror(
-                "Payment Error",
-                f"Unable to record the payment.\n\n{exc}",
-                parent=self
+            show_operation_error(
+                self,
+                "Record liability payment",
+                exc,
             )
             return
 
         if self.on_saved:
             self.on_saved()
+
+        show_save_success(
+            self,
+            "Liability payment",
+        )
 
         self.destroy()

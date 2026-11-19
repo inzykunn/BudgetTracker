@@ -43,8 +43,7 @@ def create_transaction_with_connection(
     if not date:
         raise ValueError("Transaction date is required")
 
-    if not description or not description.strip():
-        raise ValueError("Transaction description is required")
+    description = description.strip() if description else ""
 
     if not transaction_type or not transaction_type.strip():
         raise ValueError("Transaction type is required")
