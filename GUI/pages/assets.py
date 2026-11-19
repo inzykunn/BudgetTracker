@@ -2,42 +2,35 @@ from datetime import date
 
 import customtkinter as ctk
 
-from services import account_service, asset_service, category_service
-
 from GUI.components.buttons import Buttons
 from GUI.components.forms import FormWindow
-from GUI.components.selectors import Selector
 from GUI.components.tables import Tables
-
 from GUI.styles.colors import (
     CONTENT,
     TEXT_DARK,
 )
-
 from GUI.styles.theme import (
     CONTENT_PAD_X,
     CONTENT_PAD_Y,
     FONT_PAGE_TITLE,
 )
-
 from GUI.utils.feedback import (
     show_info,
     show_operation_error,
     show_save_success,
     show_update_success,
 )
-
 from GUI.utils.formatters import (
     format_currency,
     format_date,
 )
-
 from GUI.utils.validation import (
     require_id,
     require_text,
     validate_currency,
     validate_date,
 )
+from services import account_service, asset_service, category_service
 
 
 class AssetsPage(ctk.CTkFrame):
@@ -48,7 +41,6 @@ class AssetsPage(ctk.CTkFrame):
             fg_color=CONTENT,
         )
 
-        self.navigate = navigate
         self.selected_asset_id = None
 
         self.accounts = []

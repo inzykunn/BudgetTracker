@@ -42,7 +42,6 @@ class TransactionsPage(ctk.CTkFrame):
             fg_color=CONTENT,
         )
 
-        self.navigate = navigate
         self.account_names = {}
         self.category_names = {}
 

@@ -34,7 +34,6 @@ class PeoplePage(ctk.CTkFrame):
             fg_color=CONTENT,
         )
 
-        self.navigate = navigate
         self.people = []
         self.selected_person_id = None
 

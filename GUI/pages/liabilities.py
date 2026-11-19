@@ -37,7 +37,6 @@ class LiabilitiesPage(ctk.CTkFrame):
             fg_color=CONTENT,
         )
 
-        self.navigate = navigate
         self.accounts = []
         self.account_map = {}
         self.people = []

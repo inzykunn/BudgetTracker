@@ -34,7 +34,6 @@ from services import (
     transaction_service,
 )
 
-
 class TransferPage(ctk.CTkFrame):
     def __init__(self, master, navigate=None):
         super().__init__(
@@ -43,7 +42,6 @@ class TransferPage(ctk.CTkFrame):
             fg_color=CONTENT,
         )
 
-        self.navigate = navigate
         self.accounts = []
         self.account_names = {}
 

@@ -46,7 +46,6 @@ class ReportsPage(ctk.CTkFrame):
             fg_color=CONTENT,
         )
 
-        self.navigate = navigate
         self.report = None
         self.start_date = date.today().replace(day=1).isoformat()
         self.end_date = date.today().isoformat()

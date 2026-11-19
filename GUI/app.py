@@ -24,33 +24,17 @@ class BudgetTrackerApp(ctk.CTk):
         self.geometry("1180x820")
         self.minsize(900, 650)
 
-        self.after(
-            100,
-            lambda: self.state("zoomed"),
-        )
+        self.after(100, lambda: self.state("zoomed"))
 
-        self.configure(
-            fg_color=BG,
-        )
+        self.configure(fg_color=BG)
 
-        self.grid_columnconfigure(
-            0,
-            weight=0,
-        )
-
-        self.grid_columnconfigure(
-            1,
-            weight=1,
-        )
-
-        self.grid_rowconfigure(
-            0,
-            weight=1,
-        )
+        self.grid_columnconfigure(0, weight=0)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
         self.create_sidebar()
         self.create_main_container()
-        self.navigate("Accounts")
+        self.navigate("Dashboard")
 
     def create_sidebar(self):
         self.sidebar = Sidebar(
@@ -64,7 +48,7 @@ class BudgetTrackerApp(ctk.CTk):
                 "Assets",
                 "Inventory",
                 "Receivables",
-                "Peoples",
+                "People",
                 "Liabilities",
                 "Reports",
             ],
@@ -90,24 +74,11 @@ class BudgetTrackerApp(ctk.CTk):
             sticky="nsew",
         )
 
-        self.main_area.grid_columnconfigure(
-            0,
-            weight=1,
-        )
+        self.main_area.grid_columnconfigure(0, weight=1)
+        self.main_area.grid_rowconfigure(0, weight=0)
+        self.main_area.grid_rowconfigure(1, weight=1)
 
-        self.main_area.grid_rowconfigure(
-            0,
-            weight=0,
-        )
-
-        self.main_area.grid_rowconfigure(
-            1,
-            weight=1,
-        )
-
-        self.header = Header(
-            self.main_area,
-        )
+        self.header = Header(self.main_area)
 
         self.header.grid(
             row=0,
@@ -127,90 +98,38 @@ class BudgetTrackerApp(ctk.CTk):
             sticky="nsew",
         )
 
-        self.page_container.grid_columnconfigure(
-            0,
-            weight=1,
-        )
-
-        self.page_container.grid_rowconfigure(
-            0,
-            weight=1,
-        )
+        self.page_container.grid_columnconfigure(0, weight=1)
+        self.page_container.grid_rowconfigure(0, weight=1)
 
     def navigate(self, page_name):
+        pages = {
+            "Dashboard": DashboardPage,
+            "Accounts": AccountsPage,
+            "Categories": CategoriesPage,
+            "Transactions": TransactionsPage,
+            "Transfer": TransferPage,
+            "Assets": AssetsPage,
+            "Inventory": InventoryPage,
+            "Receivables": ReceivablesPage,
+            "People": PeoplePage,
+            "Liabilities": LiabilitiesPage,
+            "Reports": ReportsPage,
+        }
+
+        page_class = pages.get(page_name)
+
+        if page_class is None:
+            return
+
         for widget in self.page_container.winfo_children():
             widget.destroy()
 
         self.header.set_title(page_name)
 
-        if page_name == "Dashboard":
-            page = DashboardPage(
-                self.page_container,
-                self.navigate,
-            )
-
-        elif page_name == "Accounts":
-            page = AccountsPage(
-                self.page_container,
-                self.navigate,
-            )
-
-        elif page_name == "Categories":
-            page = CategoriesPage(
-                self.page_container,
-                self.navigate,
-            )
-
-        elif page_name == "Transactions":
-            page = TransactionsPage(
-                self.page_container,
-                self.navigate,
-            )
-
-        elif page_name == "Transfer":
-            page = TransferPage(
-                self.page_container,
-                self.navigate,
-            )
-
-        elif page_name == "Assets":
-            page = AssetsPage(
-                self.page_container,
-                self.navigate,
-            )
-
-        elif page_name == "Inventory":
-            page = InventoryPage(
-                self.page_container,
-                self.navigate,
-            )
-
-        elif page_name == "Receivables":
-            page = ReceivablesPage(
-                self.page_container,
-                self.navigate,
-            )
-
-        elif page_name == "Peoples":
-            page = PeoplePage(
-                self.page_container,
-                self.navigate,
-            )
-
-        elif page_name == "Liabilities":
-            page = LiabilitiesPage(
-                self.page_container,
-                self.navigate,
-            )
-
-        elif page_name == "Reports":
-            page = ReportsPage(
-                self.page_container,
-                self.navigate,
-            )
-
-        else:
-            return
+        page = page_class(
+            self.page_container,
+            self.navigate,
+        )
 
         page.grid(
             row=0,
@@ -218,8 +137,7 @@ class BudgetTrackerApp(ctk.CTk):
             sticky="nsew",
         )
 
-        if hasattr(self.sidebar, "set_active"):
-            self.sidebar.set_active(page_name)
+        self.sidebar.set_active(page_name)
 
 
 def run():

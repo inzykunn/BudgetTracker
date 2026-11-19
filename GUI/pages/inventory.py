@@ -41,7 +41,6 @@ class InventoryPage(ctk.CTkFrame):
             fg_color=CONTENT,
         )
 
-        self.navigate = navigate
         self.selected_item_id = None
 
         self.grid_columnconfigure(
@@ -354,58 +353,6 @@ class InventoryPage(ctk.CTkFrame):
             item,
             on_saved=self.refresh,
         )
-
-    def _show_item(self, item_id):
-        try:
-            item = inventory_service.get_inventory_item_by_id(
-                item_id
-            )
-
-            profit = inventory_service.calculate_inventory_profit(
-                item_id
-            )
-
-        except Exception as exc:
-            show_operation_error(
-                self,
-                "Load Inventory Item",
-                exc,
-            )
-            return
-
-        if not item:
-            return
-
-        (
-            _,
-            name,
-            purchase_cost,
-            sale_price,
-            acquired_date,
-            sold_date,
-            status,
-            notes,
-        ) = item
-
-        details = (
-            f"Name: {name}\n"
-            f"Purchase Cost: {format_currency(purchase_cost)}\n"
-            f"Sale Price: "
-            f"{format_currency(sale_price) if sale_price is not None else 'Not sold'}\n"
-            f"Acquired Date: {acquired_date}\n"
-            f"Sold Date: {sold_date or 'Not sold'}\n"
-            f"Status: {status}\n"
-            f"Profit: "
-            f"{format_currency(profit) if sale_price is not None else 'Not sold'}\n"
-            f"Notes: {notes or 'None'}"
-        )
-
-        show_info(
-            self,
-            "Inventory Item",
-            details,
-        )
-
 
 class InventoryForm(FormWindow):
     def __init__(

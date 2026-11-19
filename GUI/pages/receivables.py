@@ -41,7 +41,6 @@ class ReceivablesPage(ctk.CTkFrame):
             fg_color=CONTENT,
         )
 
-        self.navigate = navigate
         self.accounts = []
         self.account_options = []
         self.people = []

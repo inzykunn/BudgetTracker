@@ -43,8 +43,6 @@ class AccountsPage(ctk.CTkFrame):
             fg_color=CONTENT,
         )
 
-        self.navigate = navigate
-
         self.grid_columnconfigure(
             0,
             weight=1,
